@@ -1,0 +1,178 @@
+# 06 — Roadmap Implementasi dan Acceptance
+
+## Cara menggunakan roadmap
+
+Pekerjaan dibagi menjadi release slice yang menghasilkan alur dapat diuji. Estimasi waktu baru dibuat setelah discovery data, SOP, dan kapasitas tim selesai. Label:
+
+- **P0**: dibutuhkan sebelum pilot operasional terkontrol.
+- **P1**: dibutuhkan sebelum perluasan pilot/produksi terbatas.
+- **P2**: optimasi setelah kontrol inti stabil.
+
+## Fase 0 — Baseline, SOP, dan regulasi (P0)
+
+- [ ] F0-01: finalisasi glossary, role, branch scope, state machine, reason code, dan RACI.
+- [ ] F0-02: regulatory walkthrough POJK/SEOJK dan lampiran resmi.
+- [ ] F0-03: data dictionary dan system-of-record ownership.
+- [ ] F0-04: threat model, data classification, retention, RPO/RTO.
+- [ ] F0-05: arsitektur route, event, approval, configuration versioning, dan reporting.
+
+Exit: artefak disetujui product, operations, finance, risk/compliance, security, dan engineering.
+
+## Fase 1 — Enterprise shell dan design system (P0)
+
+- [ ] F1-01: route unik dan redirect route lama.
+- [ ] F1-02: sidebar collapse/expand, group accordion, mobile drawer.
+- [ ] F1-03: satu active leaf, permission-aware navigation.
+- [ ] F1-04: tabel, filter, saved views, record header, timeline, evidence, approval components.
+- [ ] F1-05: perbaikan responsive, overflow, keyboard, WCAG, microcopy.
+- [ ] F1-06: global search dan notification center yang terhubung data.
+
+Exit: shell lulus visual regression, keyboard, responsive, dan active-route tests.
+
+## Fase 2 — Customer 360 dan governance identitas (P0)
+
+- [ ] F2-01: customer list server-side dan detail route.
+- [ ] F2-02: KYC, consent, document evidence, history.
+- [ ] F2-03: customer-loan-collateral-payment relationships.
+- [ ] F2-04: duplicate, merge, correction, freeze, watchlist workflow.
+- [ ] F2-05: tenant/branch/masking authorization tests.
+
+Exit: operator dapat membuka detail dan menjalankan tindakan aman; auditor dapat melihat historinya.
+
+## Fase 3 — Loan origination dan appraisal (P0)
+
+- [ ] F3-01: application queue/detail/checklist/assignment/SLA.
+- [ ] F3-02: state machine dan server-side transition guards.
+- [ ] F3-03: appraisal workbench, evidence, version, supervisor review.
+- [ ] F3-04: offer, simulation, acceptance, agreement, signature evidence.
+- [ ] F3-05: approval matrix dan domain events.
+
+Exit: happy path dan negative path tervalidasi end-to-end tanpa perubahan status manual.
+
+## Fase 4 — Collateral, pickup, custody, inventory (P0)
+
+- [ ] F4-01: passport/QR dan detail record.
+- [ ] F4-02: pickup scheduling dan proof of handover.
+- [ ] F4-03: custody receive/QC/store/move/release.
+- [ ] F4-04: stock opname blind count/recount/discrepancy.
+- [ ] F4-05: chain-of-custody event dan reconciliation.
+
+Exit: lokasi dan status setiap agunan dapat direkonstruksi; selisih tidak dapat ditutup tanpa bukti dan approval.
+
+## Fase 5 — Finance, accounting, dan collection (P0/P1)
+
+- [ ] F5-01: teller/cashbox open, transaction, count, variance, close.
+- [ ] F5-02: payment allocation, receipt, reversal, refund.
+- [ ] F5-03: COA, posting rules, journal, period lock.
+- [ ] F5-04: bank/subledger/cash reconciliation dan exception.
+- [ ] F5-05: collection queue, activity, promise-to-pay, strategy.
+
+Exit: transaksi uang mempunyai source event, balanced journal, receipt, dan rekonsiliasi.
+
+## Fase 6 — Compliance, audit, settings, support (P0/P1)
+
+- [ ] F6-01: domain event ledger dan audit explorer.
+- [ ] F6-02: approval inbox, separation of duty, delegation, escalation.
+- [ ] F6-03: exception case dan investigation workflow.
+- [ ] F6-04: complaint/support ticket dan SLA.
+- [ ] F6-05: configuration workbench versioned/effective-dated.
+- [ ] F6-06: privileged access, MFA, session, security event.
+
+Exit: semua command P0 memiliki event, kontrol approval, dan konfigurasi terversi.
+
+## Fase 7 — OJK, SLIK, dan management reporting (P1)
+
+- [ ] F7-01: reporting calendar dan obligation profile.
+- [ ] F7-02: OJK monthly templates, lineage, validation, reconciliation.
+- [ ] F7-03: SLIK segment mapping, reference codes, validation.
+- [ ] F7-04: revision, review, sign-off, file generation, checksum.
+- [ ] F7-05: submission evidence/acknowledgement dan adapter resmi bila tersedia.
+- [ ] F7-06: health, financial, operational, risk dashboards dari governed metrics.
+
+Exit: file periode uji lolos validator resmi dan sign-off compliance.
+
+## Fase 8 — Production readiness (P0 sebelum go-live)
+
+- [ ] F8-01: migration rehearsal dan reconciliation 100% record kritis.
+- [ ] F8-02: performance/load/soak test pada volume target.
+- [ ] F8-03: security review, penetration test, dependency remediation.
+- [ ] F8-04: backup restore dan DR drill.
+- [ ] F8-05: observability, SLO, alert, on-call, incident runbook.
+- [ ] F8-06: UAT per role/cabang dan remediation.
+- [ ] F8-07: SOP, training, access provisioning, support readiness.
+- [ ] F8-08: pilot terbatas, parallel run, go/no-go, rollback plan.
+
+Exit: sign-off formal business owner, operations, finance, risk/compliance, security, IT operations, dan data owner.
+
+## Cross-cutting acceptance matrix
+
+| Dimensi | Kriteria minimum |
+|---|---|
+| Functional | happy path, negative path, retry, cancel, reversal, correction teruji |
+| Tenant isolation | akses silang tenant ditolak pada list/detail/action/export/job/file |
+| Branch/role scope | ABAC sesuai assignment, category, amount authority, dan purpose |
+| Audit | command penting menghasilkan event, diff, actor, reason, approval, evidence |
+| Data integrity | transaction atomic, idempotent, referential integrity, reconciliation |
+| UX | satu menu aktif, keyboard, responsive, loading/error/empty/read-only lengkap |
+| Performance | target latency dan concurrency disepakati serta diuji dengan dataset representatif |
+| Security | MFA privileged, session control, encryption, masking, secure upload/download |
+| Resilience | retry, outbox, dead-letter handling, backup/restore, DR |
+| Regulatory | template/version/lineage/validation/sign-off/acknowledgement terbukti |
+
+## Test suite wajib
+
+### Unit dan contract
+
+- State transition guard, calculations, allocation, posting rule, validation rule.
+- API request/response contract dan event schema compatibility.
+
+### Integration
+
+- Database transaction dan rollback.
+- Outbox/idempotency/retry.
+- Object storage/evidence/checksum.
+- Accounting and subledger reconciliation.
+
+### Authorization
+
+- Matriks role × tenant × branch × state × action.
+- Object ID tampering, export, background job, file access, and admin override.
+
+### End-to-end
+
+- Customer → application → appraisal → offer → agreement → custody → disbursement.
+- Payment → allocation → journal → reconciliation → settlement.
+- Late payment → collection → promise → resolution.
+- Stock opname → discrepancy → investigation → approval.
+- Report extract → correction → review → sign-off → file → acknowledgement.
+
+### UX dan accessibility
+
+- Visual regression pada viewport target.
+- Keyboard navigation, focus, screen reader landmarks, contrast.
+- Exactly one active navigation leaf.
+- Table overflow dan sticky behavior.
+
+## Release dan migrasi
+
+- Feature release dibatasi tenant/cabang/role, dengan owner dan expiry.
+- Database migration backward-compatible bila memungkinkan.
+- Backfill idempotent dengan progress dan reconciliation report.
+- Route lama diberi redirect; endpoint lama memiliki deprecation window.
+- Pilot memakai synthetic/sanitized data sebelum parallel run data produksi.
+- Setiap release memiliki rollout, monitoring, rollback, dan communication plan.
+
+## Prioritas implementasi pertama
+
+Sprint implementasi pertama setelah approval rancangan:
+
+1. Pecah route dan perbaiki active state.
+2. Bangun sidebar modern collapse/expand dan responsive shell.
+3. Bangun DataTable/RecordHeader/Timeline/ApprovalPanel bersama.
+4. Ubah CRM menjadi list + detail yang dapat diklik.
+5. Pisahkan application dan appraisal queue.
+6. Bentuk domain event schema sebelum menambah banyak command baru.
+
+## Go-live decision
+
+Produk hanya diberi label **siap operasi** setelah seluruh gate P0 selesai. Fitur yang belum lulus tetap dibatasi melalui permission/release configuration dan tidak ditampilkan sebagai kontrol aktif.
