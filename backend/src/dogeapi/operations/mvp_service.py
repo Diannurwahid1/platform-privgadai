@@ -21,11 +21,14 @@ from dogeapi.models import (
     AssetCategory,
     Borrower,
     Branch,
+    CashTransaction,
     CollateralEvent,
+    CollectionCase,
     Consent,
     CustodyEvent,
     CustodyLocation,
     CustomerAcceptance,
+    DebtorProfile,
     EvidenceFile,
     HumanAppraisal,
     Incident,
@@ -34,6 +37,7 @@ from dogeapi.models import (
     LoanProduct,
     Membership,
     Offer,
+    PawnAgreement,
     PickupTask,
     SettlementVerification,
     StaffAssignment,
@@ -87,6 +91,9 @@ async def create_branch(session: AsyncSession, org_id: UUID, data: BranchCreate)
     item = Branch(org_id=org_id, **data.model_dump())
     session.add(item)
     await _flush_or_conflict(session, "Branch code already exists")
+    from dogeapi.operations import erp_service
+
+    await erp_service.ensure_finance_masters(session, org_id, item.id)
     return item
 
 
@@ -225,6 +232,7 @@ async def create_application(
     )
     session.add(borrower)
     await session.flush()
+    session.add(DebtorProfile(org_id=org_id, borrower_id=borrower.id))
 
     initial_status = "submitted" if data.submit else "draft"
     now = datetime.now(UTC)
@@ -367,6 +375,28 @@ async def ensure_operational_access(
     )
     if assignment is None:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Operational role or branch assignment is insufficient")
+
+
+async def ensure_any_operational_role(
+    session: AsyncSession, org_id: UUID, user_id: UUID, allowed_roles: set[str]
+) -> None:
+    membership = await session.scalar(
+        select(Membership).where(Membership.org_id == org_id, Membership.user_id == user_id)
+    )
+    if membership is None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "No membership in active tenant")
+    if membership.role.value in {"owner", "admin"}:
+        return
+    assignment = await session.scalar(
+        select(StaffAssignment).where(
+            StaffAssignment.org_id == org_id,
+            StaffAssignment.user_id == user_id,
+            StaffAssignment.operational_role.in_(allowed_roles),
+            StaffAssignment.is_active,
+        )
+    )
+    if assignment is None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Operational role is insufficient")
 
 
 async def get_application(session: AsyncSession, org_id: UUID, application_id: UUID) -> LoanApplication:
@@ -597,8 +627,22 @@ async def accept_offer(
         account_no=f"LN-{datetime.now(UTC).strftime('%y%m%d')}-{secrets.token_hex(3).upper()}",
         principal_amount=offer.principal_amount,
         total_due_amount=offer.total_due_amount,
+        outstanding_principal=Decimal("0"),
+        outstanding_fee=Decimal("0"),
+        paid_amount=Decimal("0"),
     )
-    session.add(account)
+    product = await session.scalar(
+        select(LoanProduct).where(LoanProduct.org_id == org_id, LoanProduct.id == application.product_id)
+    )
+    agreement = PawnAgreement(
+        org_id=org_id,
+        application_id=application.id,
+        offer_id=offer.id,
+        sbg_number=f"SBG-{datetime.now(UTC).strftime('%y%m%d')}-{secrets.token_hex(3).upper()}",
+        agreement_type=product.agreement_type if product else "pawn",
+        document_version=offer.agreement_version,
+    )
+    session.add_all([account, agreement])
     await transition_application(session, org_id, actor_id, application.id, "accepted", "Offer accepted by customer")
     session.add(
         CollateralEvent(
@@ -694,7 +738,12 @@ async def create_custody_event(
 
 
 async def disburse_loan(
-    session: AsyncSession, org_id: UUID, actor_id: UUID, application_id: UUID, external_reference: str
+    session: AsyncSession,
+    org_id: UUID,
+    actor_id: UUID,
+    application_id: UUID,
+    external_reference: str,
+    idempotency_key: str,
 ) -> LoanAccount:
     application = await get_application(session, org_id, application_id)
     await ensure_operational_access(
@@ -705,6 +754,13 @@ async def disburse_loan(
     )
     if account is None:
         raise _not_found("Loan account")
+    existing = await session.scalar(
+        select(CashTransaction).where(
+            CashTransaction.org_id == org_id, CashTransaction.idempotency_key == idempotency_key
+        )
+    )
+    if existing is not None:
+        return account
     if not can_transition(LOAN_TRANSITIONS, account.status, "active"):
         raise _conflict(f"Cannot disburse loan in {account.status} status")
     offer = await session.scalar(
@@ -714,6 +770,21 @@ async def disburse_loan(
     account.disbursement_reference = external_reference
     account.disbursed_at = datetime.now(UTC)
     account.due_at = account.disbursed_at + timedelta(days=offer.tenor_days if offer else 30)
+    from dogeapi.operations import erp_service
+
+    await erp_service.post_disbursement(
+        session, org_id, actor_id, application, account, external_reference, idempotency_key
+    )
+    session.add(
+        CollectionCase(
+            org_id=org_id,
+            loan_account_id=account.id,
+            due_at=account.due_at,
+            outstanding_amount=account.total_due_amount,
+            aging_bucket="current",
+            status="monitoring",
+        )
+    )
     _add_collateral_event(
         session,
         org_id,
@@ -739,12 +810,44 @@ async def verify_settlement(
     )
     if account is None:
         raise _not_found("Loan account")
+    existing = await session.scalar(
+        select(CashTransaction).where(
+            CashTransaction.org_id == org_id, CashTransaction.idempotency_key == data.idempotency_key
+        )
+    )
+    if existing is not None:
+        existing_verification = await session.scalar(
+            select(SettlementVerification).where(
+                SettlementVerification.org_id == org_id,
+                SettlementVerification.application_id == data.application_id,
+                SettlementVerification.external_reference == data.external_reference,
+            )
+        )
+        if existing_verification is None:
+            raise _conflict("Idempotency key was used for another transaction")
+        return existing_verification
     if not can_transition(LOAN_TRANSITIONS, account.status, "settled"):
         raise _conflict(f"Cannot settle loan in {account.status} status")
-    if data.settlement_type == "repayment" and data.amount < account.total_due_amount:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Repayment amount is below total due")
-    item = SettlementVerification(org_id=org_id, verified_by_user_id=actor_id, **data.model_dump())
+    if data.settlement_type == "repayment" and data.amount != account.total_due_amount:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Repayment amount must equal total due")
+    item = SettlementVerification(
+        org_id=org_id,
+        verified_by_user_id=actor_id,
+        **data.model_dump(exclude={"idempotency_key"}),
+    )
     session.add(item)
+    from dogeapi.operations import erp_service
+
+    await erp_service.post_repayment(
+        session,
+        org_id,
+        actor_id,
+        application,
+        account,
+        data.amount,
+        data.external_reference,
+        data.idempotency_key,
+    )
     account.status = "settled"
     account.settled_at = datetime.now(UTC)
     asset = await _get_asset(session, org_id, data.application_id)

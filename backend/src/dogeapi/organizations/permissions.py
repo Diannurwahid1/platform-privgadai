@@ -27,6 +27,10 @@ ROLE_SCOPES: dict[Role, list[str]] = {
         "org:ai:*",
         "org:operations:*",
         "org:master:*",
+        "org:finance:*",
+        "org:reports:*",
+        "org:collections:*",
+        "org:inventory:*",
     ],
     Role.MEMBER: [
         "org:read",
@@ -34,6 +38,10 @@ ROLE_SCOPES: dict[Role, list[str]] = {
         "org:ai:use",
         "org:operations:read",
         "org:operations:write",
+        "org:finance:use",
+        "org:reports:read",
+        "org:collections:use",
+        "org:inventory:use",
     ],
 }
 

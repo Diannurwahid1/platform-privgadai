@@ -74,6 +74,18 @@ async def test_complete_mvp_workflow_is_tenant_scoped(client: AsyncClient) -> No
         headers=headers,
     )
     assert location.status_code == 201, location.text
+    cashboxes = await client.get("/v1/finance/cashboxes", headers=headers)
+    assert cashboxes.status_code == 200, cashboxes.text
+    funded = await client.post(
+        f"/v1/finance/cashboxes/{cashboxes.json()[0]['id']}/fund",
+        json={
+            "amount": "100000000",
+            "external_reference": "CAPITAL-TEST-001",
+            "idempotency_key": "capital-test-001",
+        },
+        headers=headers,
+    )
+    assert funded.status_code == 200, funded.text
 
     public_config = await client.get("/public/v1/partners/mitra-mvp/intake-config")
     assert public_config.status_code == 200
@@ -191,10 +203,27 @@ async def test_complete_mvp_workflow_is_tenant_scoped(client: AsyncClient) -> No
     assert stored.status_code == 201, stored.text
     disbursed = await client.post(
         f"/v1/loans/{application_id}/disburse",
-        json={"external_reference": "DISB-TEST-001"},
+        json={"external_reference": "DISB-TEST-001", "idempotency_key": "disbursement-test-001"},
         headers=headers,
     )
     assert disbursed.status_code == 200, disbursed.text
+    repeated_disbursement = await client.post(
+        f"/v1/loans/{application_id}/disburse",
+        json={"external_reference": "DISB-TEST-001", "idempotency_key": "disbursement-test-001"},
+        headers=headers,
+    )
+    assert repeated_disbursement.status_code == 200, repeated_disbursement.text
+    finance = await client.get("/v1/finance/overview", headers=headers)
+    assert finance.status_code == 200, finance.text
+    assert finance.json()["active_loan_count"] == 1
+    assert float(finance.json()["outstanding_principal"]) == 7_000_000
+    reports = await client.get("/v1/accounting/reports", headers=headers)
+    assert reports.status_code == 200, reports.text
+    trial = reports.json()["trial_balance"]
+    assert sum(float(row["debit"]) for row in trial) == sum(float(row["credit"]) for row in trial)
+    collections = await client.get("/v1/collections", headers=headers)
+    assert collections.status_code == 200
+    assert len(collections.json()) == 1
     settled = await client.post(
         "/v1/settlements",
         json={
@@ -202,10 +231,25 @@ async def test_complete_mvp_workflow_is_tenant_scoped(client: AsyncClient) -> No
             "settlement_type": "repayment",
             "external_reference": "PAY-TEST-001",
             "amount": "7350000",
+            "idempotency_key": "repayment-test-001",
         },
         headers=headers,
     )
     assert settled.status_code == 201, settled.text
+    repeated_settlement = await client.post(
+        "/v1/settlements",
+        json={
+            "application_id": application_id,
+            "settlement_type": "repayment",
+            "external_reference": "PAY-TEST-001",
+            "amount": "7350000",
+            "idempotency_key": "repayment-test-001",
+        },
+        headers=headers,
+    )
+    assert repeated_settlement.status_code == 201, repeated_settlement.text
+    finance_after = await client.get("/v1/finance/overview", headers=headers)
+    assert float(finance_after.json()["outstanding_principal"]) == 0
 
     passport = await client.get(f"/v1/collateral/{application_id}/timeline", headers=headers)
     assert passport.status_code == 200

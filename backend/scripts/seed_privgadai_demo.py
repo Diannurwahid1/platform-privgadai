@@ -26,8 +26,10 @@ from dogeapi.models import (
     LoanProduct,
     Membership,
     Organization,
+    RegulatoryReportTemplate,
     StaffAssignment,
 )
+from dogeapi.operations import erp_service
 
 DEMO_APPLICATIONS = (
     (
@@ -236,6 +238,49 @@ async def seed(org_slug: str | None) -> None:
                         branch_id=branches[0].id,
                         operational_role="ops_admin",
                     )
+                )
+
+            if actor_user_id:
+                for branch in branches:
+                    _, cashbox = await erp_service.ensure_finance_masters(session, org.id, branch.id)
+                    await erp_service.fund_cashbox(
+                        session,
+                        org.id,
+                        actor_user_id,
+                        cashbox.id,
+                        Decimal("100000000"),
+                        f"DEMO-CAPITAL-{branch.code}",
+                        f"demo-capital-{org.id}-{branch.code}",
+                    )
+
+            if not await session.scalar(
+                select(func.count(RegulatoryReportTemplate.id)).where(RegulatoryReportTemplate.org_id == org.id)
+            ):
+                session.add_all(
+                    [
+                        RegulatoryReportTemplate(
+                            org_id=org.id,
+                            report_type="OJK",
+                            code="OJK-MONTHLY-DRAFT",
+                            name="Template laporan bulanan — perlu validasi regulasi resmi",
+                            version="draft-2026.1",
+                            effective_from=datetime.now(UTC).date(),
+                            mapping_schema={"status": "draft", "source": "loan_subledger"},
+                            validation_rules=[],
+                            status="draft",
+                        ),
+                        RegulatoryReportTemplate(
+                            org_id=org.id,
+                            report_type="SLIK",
+                            code="SLIK-DRAFT",
+                            name="Template persiapan data SLIK — bukan kanal submission",
+                            version="draft-2026.1",
+                            effective_from=datetime.now(UTC).date(),
+                            mapping_schema={"status": "draft", "segments": []},
+                            validation_rules=[],
+                            status="draft",
+                        ),
+                    ]
                 )
 
             if branch_count:

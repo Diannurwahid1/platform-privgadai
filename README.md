@@ -2,7 +2,7 @@
 
 Codebase awal untuk MVP B2B SaaS PrivGadai. Rancangan produk dan urutan pengerjaan mengikuti `../PrivGadai_Technical_Architecture_Blueprint_V3_Lengkap.pdf` dan `../TASK.md`.
 
-**Status:** MVP operasional manual sudah tersedia di atas fondasi `../ai-template-main/`: multi-tenant/branch, master data, intake nasabah, review, human appraisal, offer/acceptance, pickup, custody, settlement, incident, evidence privat, dan Collateral Passport. AI dan proof registry tetap fase lanjutan. Gunakan data sintetis untuk semua pengujian.
+**Status:** MVP operasional manual sudah tersedia di atas fondasi `../ai-template-main/`: multi-tenant/branch, master data, intake nasabah, review, human appraisal, offer/acceptance, pickup, custody, settlement, incident, evidence privat, dan Collateral Passport. Ekspansi V3.1 menambahkan Debitur & CRM, akad/SBG, loan subledger, teller/cashbox, jurnal double-entry dan reversal, collections, stock opname maker-checker, laporan keuangan/BI, serta template/report run OJK dan SLIK berversi. Modul regulasi masih berupa draft internal dan belum merupakan format atau koneksi submission resmi regulator. AI dan proof registry tetap fase lanjutan. Gunakan data sintetis untuk semua pengujian.
 
 ## Arsitektur yang dituju
 
@@ -15,8 +15,8 @@ Codebase awal untuk MVP B2B SaaS PrivGadai. Rancangan produk dan urutan pengerja
 
 | Path | Kondisi |
 | --- | --- |
-| `backend/` | Auth, tenant/RBAC, master data, tiga state machine, proses pinjaman/agunan, audit domain, evidence privat, admin, migrasi, seed, dan tes tenant. |
-| `frontend/` | Partner Operations, portal intake nasabah, Field Agent workspace, Master Data, Applications, dan Collateral Passport. |
+| `backend/` | Auth, tenant/RBAC, master data, tiga state machine, proses pinjaman/agunan, loan subledger, cash/GL, collections, stock opname, reporting, audit domain, evidence privat, admin, migrasi, seed, dan tes tenant. |
+| `frontend/` | Partner Operations, portal intake nasabah, Field Agent workspace, Debitur & CRM, Master Data, Applications, Collateral Passport, Finance, Reports, dan Stock Opname. |
 | `admin/` | Portal super-admin bawaan template. Akan digabung ke satu pengalaman frontend sesuai V3.0. |
 | `infra/` | Konfigurasi Compose warisan template yang tidak dipakai untuk setup lokal. Evidence MVP memakai storage privat lokal `backend/.data/evidence`; worker belum ada. |
 
@@ -46,13 +46,13 @@ Tes backend memakai database `privgadai_test` yang dibuat otomatis dari konfigur
 
 ## Route MVP
 
-- Partner: `/orgs/[slug]`, `/applications`, `/master-data`, `/collateral`, `/field`
+- Partner: `/orgs/[slug]`, `/applications`, `/customers`, `/master-data`, `/collateral`, `/field`, `/finance`, `/reports`, `/inventory`
 - Nasabah: `/apply/[slug]`
 - API/OpenAPI: `http://localhost:8000/docs`
 
 ## Pekerjaan berikutnya
 
-Lihat `../TASK.md`. Fokus hardening berikutnya: object storage terenkripsi, malware scanner, signed URL, maker-checker, idempotency, MFA sensitif, identitas borrower, offline PWA, backup/restore, lalu AI decision-support dan proof registry opsional.
+Lihat `../TASK.md`. Fokus hardening berikutnya: object storage terenkripsi, malware scanner, signed URL, MFA sensitif, identitas borrower, offline PWA, backup/restore, pemetaan spesifikasi resmi OJK/SLIK, akuntansi lanjutan, lalu AI decision-support dan proof registry opsional.
 
 ## Asal kode dan lisensi
 

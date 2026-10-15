@@ -77,11 +77,14 @@ export type AssetCategoryItem = MasterItem & {
   requires_serial_number: boolean;
 };
 export type LoanProductItem = MasterItem & {
+  agreement_type: string;
   min_amount: number;
   max_amount: number;
   max_ltv_percent: number;
   allowed_tenors_days: number[];
   service_fee_percent: number;
+  fee_rules: Record<string, unknown>;
+  approval_policy: Record<string, unknown>;
 };
 export type StaffAssignmentItem = {
   id: string;
@@ -152,6 +155,23 @@ export type FieldTaskItem = {
   branch_name: string;
 };
 
+export type FinanceOverview = {
+  cash_balance: number;
+  active_loan_count: number;
+  outstanding_principal: number;
+  outstanding_fee: number;
+  payment_today: number;
+  open_teller_sessions: number;
+  recent_transactions: Array<Record<string, unknown>>;
+};
+
+export type FinancialReports = {
+  trial_balance: Array<Record<string, unknown>>;
+  loan_portfolio: Record<string, unknown>;
+  aging: Array<Record<string, unknown>>;
+  branch_analytics: Array<Record<string, unknown>>;
+};
+
 export const listBranches = () => apiFetch<BranchItem[]>("/v1/master/branches");
 export const listAssetCategories = () =>
   apiFetch<AssetCategoryItem[]>("/v1/master/asset-categories");
@@ -200,7 +220,7 @@ export const createCustodyEvent = (json: Record<string, unknown>) =>
 export const disburseLoan = (applicationId: string, external_reference: string) =>
   apiFetch<ActionResult>(`/v1/loans/${applicationId}/disburse`, {
     method: "POST",
-    json: { external_reference },
+    json: { external_reference, idempotency_key: `disbursement-${applicationId}-${external_reference}` },
   });
 export const verifySettlement = (json: Record<string, unknown>) =>
   apiFetch<ActionResult>("/v1/settlements", { method: "POST", json });
@@ -215,4 +235,29 @@ export const uploadEvidence = (applicationId: string, file: File, evidenceType =
   form.append("file", file);
   return apiUpload<ActionResult>(`/v1/applications/${applicationId}/evidence/upload`, form);
 };
+export const getFinanceOverview = () => apiFetch<FinanceOverview>("/v1/finance/overview");
+export const listCashboxes = () => apiFetch<Array<Record<string, unknown>>>("/v1/finance/cashboxes");
+export const listTellerSessions = () =>
+  apiFetch<Array<Record<string, unknown>>>("/v1/finance/teller-sessions");
+export const openTellerSession = (cashbox_id: string) =>
+  apiFetch<ActionResult>("/v1/finance/teller-sessions", { method: "POST", json: { cashbox_id } });
+export const closeTellerSession = (sessionId: string, actual_closing_balance: number) =>
+  apiFetch<ActionResult>(`/v1/finance/teller-sessions/${sessionId}/close`, {
+    method: "POST",
+    json: { actual_closing_balance },
+  });
+export const getFinancialReports = () => apiFetch<FinancialReports>("/v1/accounting/reports");
+export const listCollections = () => apiFetch<Array<Record<string, unknown>>>("/v1/collections");
+export const listRegulatoryTemplates = () =>
+  apiFetch<Array<Record<string, unknown>>>("/v1/regulatory/templates");
+export const listRegulatoryRuns = () => apiFetch<Array<Record<string, unknown>>>("/v1/regulatory/runs");
+export const createRegulatoryRun = (template_id: string, period_start: string, period_end: string) =>
+  apiFetch<ActionResult>("/v1/regulatory/runs", {
+    method: "POST",
+    json: { template_id, period_start, period_end },
+  });
+export const listCustomers = () => apiFetch<Array<Record<string, unknown>>>("/v1/customers");
+export const listInventoryChecks = () => apiFetch<Array<Record<string, unknown>>>("/v1/inventory-checks");
+export const createInventoryCheck = (location_id: string) =>
+  apiFetch<ActionResult>("/v1/inventory-checks", { method: "POST", json: { location_id } });
 

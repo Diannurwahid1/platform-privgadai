@@ -311,7 +311,9 @@ async def disburse_loan(
     org_id: OrgIdDep,
     user: UserDep,
 ) -> ActionResult:
-    item = await mvp_service.disburse_loan(session, org_id, user.id, application_id, data.external_reference)
+    item = await mvp_service.disburse_loan(
+        session, org_id, user.id, application_id, data.external_reference, data.idempotency_key
+    )
     await session.commit()
     return ActionResult(id=item.id, application_id=item.application_id, status=item.status, message="Loan disbursed")
 

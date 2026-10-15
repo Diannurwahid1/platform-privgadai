@@ -4,10 +4,15 @@ import Link from "next/link";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import {
+  BarChart3,
   BadgeDollarSign,
   Bell,
+  BookOpenCheck,
+  Boxes,
   Building2,
   ClipboardList,
+  ContactRound,
+  HandCoins,
   LayoutDashboard,
   LogOut,
   PackageSearch,
@@ -18,7 +23,6 @@ import {
   ShieldAlert,
   Truck,
   Users,
-  Warehouse,
 } from "lucide-react";
 import { logout, me, type User } from "@/lib/auth";
 import { switchOrg } from "@/lib/orgs";
@@ -32,6 +36,11 @@ type NavItem = {
   href: string | null;
   icon: typeof LayoutDashboard;
   badge?: string;
+};
+
+type NavGroup = {
+  label: string;
+  items: NavItem[];
 };
 
 function OrgChrome({ children }: { children: ReactNode }) {
@@ -74,31 +83,62 @@ function OrgChrome({ children }: { children: ReactNode }) {
     return <LoadingState label="Menyiapkan ruang operasi PrivGadai" />;
   }
 
-  const mainNav: NavItem[] = [
-    { label: "Ringkasan", href: `/orgs/${slug}`, icon: LayoutDashboard },
+  const navGroups: NavGroup[] = [
     {
-      label: "Pengajuan",
-      href: `/orgs/${slug}/applications`,
-      icon: ClipboardList,
-      badge: "8",
+      label: "Overview",
+      items: [{ label: "Ringkasan", href: `/orgs/${slug}`, icon: LayoutDashboard }],
     },
-    { label: "Penaksiran", href: `/orgs/${slug}/applications`, icon: Scale, badge: "2" },
-    { label: "Barang Jaminan", href: `/orgs/${slug}/collateral`, icon: PackageSearch },
-    { label: "Pickup", href: `/orgs/${slug}/field`, icon: Truck },
-    { label: "Custody", href: `/orgs/${slug}/collateral`, icon: Warehouse },
-    { label: "Settlement", href: `/orgs/${slug}/collateral`, icon: BadgeDollarSign },
-    { label: "Exception", href: `/orgs/${slug}/applications`, icon: ShieldAlert, badge: "1" },
     {
-      label: "Audit",
-      href: `/orgs/${slug}/audit-log`,
-      icon: ScrollText,
+      label: "Customers",
+      items: [{ label: "Debitur & CRM", href: `/orgs/${slug}/customers`, icon: ContactRound }],
+    },
+    {
+      label: "Loans",
+      items: [
+        { label: "Pengajuan", href: `/orgs/${slug}/applications`, icon: ClipboardList },
+        { label: "Penaksiran", href: `/orgs/${slug}/applications`, icon: Scale },
+      ],
+    },
+    {
+      label: "Collateral",
+      items: [
+        { label: "Passport & Custody", href: `/orgs/${slug}/collateral`, icon: PackageSearch },
+        { label: "Pickup Lapangan", href: `/orgs/${slug}/field`, icon: Truck },
+        { label: "Stock Opname", href: `/orgs/${slug}/inventory`, icon: Boxes },
+      ],
+    },
+    {
+      label: "Finance",
+      items: [
+        { label: "Teller & Cash", href: `/orgs/${slug}/finance`, icon: BadgeDollarSign },
+        { label: "Collections", href: `/orgs/${slug}/finance`, icon: HandCoins },
+        { label: "General Ledger", href: `/orgs/${slug}/finance`, icon: BookOpenCheck },
+      ],
+    },
+    {
+      label: "Reports",
+      items: [
+        { label: "Financial & BI", href: `/orgs/${slug}/reports`, icon: BarChart3 },
+        { label: "OJK & SLIK", href: `/orgs/${slug}/reports`, icon: ScrollText },
+      ],
+    },
+    {
+      label: "Compliance",
+      items: [
+        { label: "Audit", href: `/orgs/${slug}/audit-log`, icon: ScrollText },
+        { label: "Exceptions", href: `/orgs/${slug}/applications`, icon: ShieldAlert },
+      ],
+    },
+    {
+      label: "Management",
+      items: [
+        { label: "Master Data", href: `/orgs/${slug}/master-data`, icon: Building2 },
+        { label: "Tim & Akses", href: `/orgs/${slug}/members`, icon: Users },
+        { label: "Pengaturan", href: `/orgs/${slug}/settings`, icon: Settings },
+      ],
     },
   ];
-  const supportNav: NavItem[] = [
-    { label: "Master data", href: `/orgs/${slug}/master-data`, icon: Building2 },
-    { label: "Tim & akses", href: `/orgs/${slug}/members`, icon: Users },
-    { label: "Pengaturan mitra", href: `/orgs/${slug}/settings`, icon: Settings },
-  ];
+  const mainNav = navGroups.flatMap((group) => group.items);
 
   function renderNav(items: NavItem[]) {
     return items.map((item) => {
@@ -182,15 +222,18 @@ function OrgChrome({ children }: { children: ReactNode }) {
           </button>
         </div>
 
-        <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-          <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-            Operasional
-          </p>
-          {renderNav(mainNav)}
+        <nav className="flex-1 space-y-4 overflow-y-auto px-3 py-4">
+          {navGroups.map((group) => (
+            <div key={group.label}>
+              <p className="px-3 pb-1.5 text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                {group.label}
+              </p>
+              <div className="space-y-0.5">{renderNav(group.items)}</div>
+            </div>
+          ))}
         </nav>
 
-        <div className="space-y-1 border-t border-white/10 px-3 py-4">
-          {renderNav(supportNav)}
+        <div className="space-y-1 border-t border-white/10 px-3 py-3">
           <button
             onClick={handleLogout}
             className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-400 transition hover:bg-white/7 hover:text-white"

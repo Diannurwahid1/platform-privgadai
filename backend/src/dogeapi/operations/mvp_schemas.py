@@ -31,6 +31,9 @@ class LoanProductCreate(BaseModel):
     max_ltv_percent: Decimal = Field(gt=0, le=100)
     allowed_tenors_days: list[int] = Field(min_length=1)
     service_fee_percent: Decimal = Field(ge=0, le=100)
+    agreement_type: str = Field(default="pawn", pattern="^(pawn|fiduciary)$")
+    fee_rules: dict[str, object] = Field(default_factory=dict)
+    approval_policy: dict[str, object] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_amounts(self) -> LoanProductCreate:
@@ -74,6 +77,9 @@ class LoanProductItem(MasterItem):
     max_ltv_percent: Decimal
     allowed_tenors_days: list[int]
     service_fee_percent: Decimal
+    agreement_type: str
+    fee_rules: dict[str, object]
+    approval_policy: dict[str, object]
 
 
 class StaffAssignmentItem(BaseModel):
@@ -178,6 +184,7 @@ class CustodyLocationCreate(BaseModel):
 
 class DisbursementCreate(BaseModel):
     external_reference: str = Field(min_length=3, max_length=100)
+    idempotency_key: str = Field(min_length=8, max_length=100)
 
 
 class SettlementCreate(BaseModel):
@@ -185,6 +192,7 @@ class SettlementCreate(BaseModel):
     settlement_type: str = Field(pattern="^(repayment|auction|insurance)$")
     external_reference: str = Field(min_length=3, max_length=100)
     amount: Decimal = Field(gt=0)
+    idempotency_key: str = Field(min_length=8, max_length=100)
 
 
 class IncidentCreate(BaseModel):

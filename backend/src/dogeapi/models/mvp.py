@@ -59,6 +59,9 @@ class LoanProduct(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     max_ltv_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
     allowed_tenors_days: Mapped[list[int]] = mapped_column(JSON(), nullable=False)
     service_fee_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    agreement_type: Mapped[str] = mapped_column(String(24), nullable=False, default="pawn", server_default="pawn")
+    fee_rules: Mapped[dict[str, object]] = mapped_column(JSON(), nullable=False, default=dict)
+    approval_policy: Mapped[dict[str, object]] = mapped_column(JSON(), nullable=False, default=dict)
     is_active: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=True, server_default="true")
 
 
@@ -346,6 +349,11 @@ class LoanAccount(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     principal_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     total_due_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    outstanding_principal: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), nullable=False, default=0, server_default="0"
+    )
+    outstanding_fee: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False, default=0, server_default="0")
+    paid_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False, default=0, server_default="0")
     disbursement_reference: Mapped[str | None] = mapped_column(String(100), nullable=True)
     disbursed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
