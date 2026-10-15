@@ -20,6 +20,8 @@ PrivGadai saat ini adalah **MVP internal/pilot**. Fondasi tenant, cabang, alur p
 5. [Audit event, keamanan, dan kontrol](./05-domain-audit-security-and-controls.md)
 6. [Roadmap implementasi dan acceptance criteria](./06-delivery-roadmap-and-acceptance.md)
 7. [KYC, CDD, dan identitas nasabah](./07-kyc-cdd-implementation.md)
+8. [Approval control dan separation of duty](./08-approval-control-implementation.md)
+9. [Production readiness dan runbook operasi](./09-production-readiness.md)
 
 ## Prinsip keputusan
 

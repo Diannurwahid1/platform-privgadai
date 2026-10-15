@@ -9,9 +9,13 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from redis.asyncio import Redis
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine as create_ready_engine
@@ -21,6 +25,7 @@ from dogeapi.auth.password_reset import router as password_reset_router
 from dogeapi.auth.router import router as auth_router
 from dogeapi.auth.security import build_authx
 from dogeapi.exceptions import install_exception_handlers
+from dogeapi.operational_middleware import OperationalHeadersMiddleware
 from dogeapi.organizations.router import router as orgs_router
 from dogeapi.settings import Settings, get_settings
 from dogeapi.token_store import create_token_store
@@ -78,6 +83,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.settings = settings
 
+    app.add_middleware(OperationalHeadersMiddleware, production=settings.is_production)
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins_list,
@@ -90,18 +97,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/healthz", tags=["meta"])
     async def healthz() -> dict[str, str]:
-        return {"status": "ok", "version": __version__, "env": settings.APP_ENV}
+        return {
+            "status": "ok",
+            "version": __version__,
+            "build_sha": settings.BUILD_SHA,
+            "env": settings.APP_ENV,
+        }
 
     @app.get("/readyz", tags=["meta"])
-    async def readyz() -> dict[str, str | bool]:
+    async def readyz() -> JSONResponse:
         db_ok = False
         token_store_ok = False
+        migration_ok = False
+        database_revisions: list[str] = []
+
+        backend_root = Path(__file__).resolve().parents[2]
+        alembic_config = Config(backend_root / "alembic.ini")
+        alembic_config.set_main_option("script_location", str(backend_root / "alembic"))
+        expected_revisions = set(ScriptDirectory.from_config(alembic_config).get_heads())
 
         engine = create_ready_engine(settings.DATABASE_URL, pool_pre_ping=True)
         try:
             async with engine.connect() as conn:
                 await conn.execute(text("select 1"))
+                result = await conn.execute(text("select version_num from alembic_version"))
+                database_revisions = sorted(str(row[0]) for row in result)
             db_ok = True
+            migration_ok = set(database_revisions) == expected_revisions
         except Exception:
             db_ok = False
         finally:
@@ -115,11 +137,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         finally:
             await token_store.aclose()
 
-        return {
-            "status": "ready" if db_ok and token_store_ok else "degraded",
-            "db_ok": db_ok,
-            "token_store_ok": token_store_ok,
-        }
+        ready = db_ok and token_store_ok and migration_ok
+        return JSONResponse(
+            status_code=200 if ready else 503,
+            content={
+                "status": "ready" if ready else "degraded",
+                "db_ok": db_ok,
+                "token_store_ok": token_store_ok,
+                "migration_ok": migration_ok,
+                "database_revisions": database_revisions,
+                "expected_revisions": sorted(expected_revisions),
+                "build_sha": settings.BUILD_SHA,
+            },
+        )
 
     @app.get("/", tags=["meta"])
     async def root() -> dict[str, str]:

@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     APP_BASE_URL: str = "http://localhost:8000"
     FRONTEND_BASE_URL: str = "http://localhost:3000"
     ADMIN_BASE_URL: str = "http://localhost:3001"
+    BUILD_SHA: str = "local"
 
     DATABASE_URL: str = "postgresql+asyncpg://dogeapi:dogeapi@localhost:5432/dogeapi"
     DATABASE_URL_SYNC: str = "postgresql+psycopg://dogeapi:dogeapi@localhost:5432/dogeapi"
@@ -127,9 +128,7 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def validate_production_readiness(self) -> Settings:
         """Fail fast when production runs with placeholder or unsafe config."""
-        if self.TOKEN_STORE_BACKEND == "postgres" and (
-            self.FEATURE_RATE_LIMITING or self.FEATURE_AI_CHAT
-        ):
+        if self.TOKEN_STORE_BACKEND == "postgres" and (self.FEATURE_RATE_LIMITING or self.FEATURE_AI_CHAT):
             raise ValueError("Redis is required for rate limiting and the template AI chat module")
         if self.is_production:
             if (
@@ -145,6 +144,8 @@ class Settings(BaseSettings):
                 raise ValueError("JWT_COOKIE_SECURE must be true in production")
             if not self.PII_ENCRYPTION_KEY:
                 raise ValueError("PII_ENCRYPTION_KEY is required in production")
+            if self.BUILD_SHA == "local":
+                raise ValueError("BUILD_SHA must identify the deployed release in production")
         should_validate_integrations = self.APP_ENV != "test"
 
         if should_validate_integrations and self.FEATURE_EMAIL_DELIVERY:

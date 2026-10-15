@@ -30,6 +30,28 @@ class TestReadyz:
         assert body["status"] == "ready"
         assert body["db_ok"] is True
         assert body["token_store_ok"] is True
+        assert body["migration_ok"] is True
+        assert body["database_revisions"] == body["expected_revisions"]
+
+
+class TestOperationalHeaders:
+    """Every response carries correlation and browser hardening headers."""
+
+    async def test_generates_request_id_and_security_headers(self, client: AsyncClient) -> None:
+        response = await client.get("/healthz")
+        assert response.headers["x-request-id"]
+        assert response.headers["x-content-type-options"] == "nosniff"
+        assert response.headers["x-frame-options"] == "DENY"
+        assert response.headers["referrer-policy"] == "no-referrer"
+        assert response.headers["cache-control"] == "no-store"
+
+    async def test_preserves_valid_request_id(self, client: AsyncClient) -> None:
+        response = await client.get("/healthz", headers={"X-Request-ID": "branch-jkt-01.123"})
+        assert response.headers["x-request-id"] == "branch-jkt-01.123"
+
+    async def test_replaces_invalid_request_id(self, client: AsyncClient) -> None:
+        response = await client.get("/healthz", headers={"X-Request-ID": "contains spaces"})
+        assert response.headers["x-request-id"] != "contains spaces"
 
 
 class TestRoot:

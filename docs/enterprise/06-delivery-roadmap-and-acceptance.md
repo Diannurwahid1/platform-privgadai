@@ -107,6 +107,7 @@ Exit: file periode uji lolos validator resmi dan sign-off compliance.
 - [ ] F8-03: security review, penetration test, dependency remediation.
 - [ ] F8-04: backup restore dan DR drill.
 - [ ] F8-05: observability, SLO, alert, on-call, incident runbook.
+  - Liveness, readiness dependency + schema revision, release identity, request correlation, security headers, dan runbook awal sudah tersedia; telemetry, SLO, alert routing, dan roster on-call masih dilanjutkan.
 - [ ] F8-06: UAT per role/cabang dan remediation.
 - [ ] F8-07: SOP, training, access provisioning, support readiness.
 - [ ] F8-08: pilot terbatas, parallel run, go/no-go, rollback plan.
