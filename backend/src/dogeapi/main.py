@@ -23,6 +23,7 @@ from dogeapi.auth.security import build_authx
 from dogeapi.exceptions import install_exception_handlers
 from dogeapi.organizations.router import router as orgs_router
 from dogeapi.settings import Settings, get_settings
+from dogeapi.token_store import create_token_store
 
 # Feature-gated routers are imported lazily inside ``create_app`` so a
 # disabled feature's optional Python deps stay un-imported.
@@ -30,12 +31,12 @@ from dogeapi.settings import Settings, get_settings
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """App lifespan: build per-app Redis client + AuthX, run feature setup."""
+    """App lifespan: build per-app token store + AuthX, run feature setup."""
     settings: Settings = app.state.settings
 
-    redis = Redis.from_url(settings.REDIS_URL, decode_responses=False)
-    app.state.redis = redis
-    app.state.authx = build_authx(settings, redis=redis)
+    token_store = create_token_store(settings)
+    app.state.redis = token_store  # compatibility with existing auth dependencies
+    app.state.authx = build_authx(settings, redis=token_store)
 
     if settings.FEATURE_LOGFIRE and settings.LOGFIRE_TOKEN:
         try:
@@ -48,7 +49,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
-        await redis.aclose()
+        await token_store.aclose()
         audit_engine = getattr(app.state, "audit_engine", None)
         if audit_engine is not None:
             await audit_engine.dispose()
@@ -94,7 +95,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/readyz", tags=["meta"])
     async def readyz() -> dict[str, str | bool]:
         db_ok = False
-        redis_ok = False
+        token_store_ok = False
 
         engine = create_ready_engine(settings.DATABASE_URL, pool_pre_ping=True)
         try:
@@ -106,18 +107,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         finally:
             await engine.dispose()
 
-        redis = Redis.from_url(settings.REDIS_URL, decode_responses=True)
+        token_store = create_token_store(settings)
         try:
-            redis_ok = bool(await redis.ping())
+            token_store_ok = bool(await token_store.ping())
         except Exception:
-            redis_ok = False
+            token_store_ok = False
         finally:
-            await redis.aclose()
+            await token_store.aclose()
 
         return {
-            "status": "ready" if db_ok and redis_ok else "degraded",
+            "status": "ready" if db_ok and token_store_ok else "degraded",
             "db_ok": db_ok,
-            "redis_ok": redis_ok,
+            "token_store_ok": token_store_ok,
         }
 
     @app.get("/", tags=["meta"])

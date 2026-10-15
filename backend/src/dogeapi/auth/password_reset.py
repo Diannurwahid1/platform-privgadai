@@ -1,4 +1,4 @@
-"""Password reset endpoints + Redis-backed tokens."""
+"""Password reset endpoints using the configured short-lived token store."""
 
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ from dogeapi.auth.schemas import MessageResponse
 from dogeapi.auth.service import get_user_by_email
 from dogeapi.deps import RedisDep, SessionDep, SettingsDep
 from dogeapi.models import User
+from dogeapi.token_store import PostgresTokenStore
 
 router = APIRouter(prefix="/auth/password-reset", tags=["auth"])
 
@@ -28,18 +29,15 @@ def _hash(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
-async def _issue(redis: Redis, user_id: UUID) -> str:
+async def _issue(redis: Redis | PostgresTokenStore, user_id: UUID) -> str:
     token = secrets.token_urlsafe(32)
     await redis.setex(f"{PREFIX}{_hash(token)}", int(TTL.total_seconds()), str(user_id))
     return token
 
 
-async def _consume(redis: Redis, token: str) -> UUID | None:
+async def _consume(redis: Redis | PostgresTokenStore, token: str) -> UUID | None:
     key = f"{PREFIX}{_hash(token)}"
-    pipe = redis.pipeline()
-    pipe.get(key)
-    pipe.delete(key)
-    raw_user_id, _ = await pipe.execute()
+    raw_user_id = await redis.getdel(key)
     if not raw_user_id:
         return None
     return UUID(raw_user_id.decode("utf-8") if isinstance(raw_user_id, bytes) else raw_user_id)

@@ -127,7 +127,7 @@ async def logout(
     redis: RedisDep,
     payload: TokenDep,
 ) -> MessageResponse:
-    """Revoke the current access token via Redis blocklist and clear cookies.
+    """Revoke the current access token via the token store and clear cookies.
 
     The blocklist key TTL matches the token's remaining lifetime, so we
     never accumulate stale entries.

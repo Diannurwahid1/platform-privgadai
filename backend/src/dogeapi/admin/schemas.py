@@ -33,7 +33,7 @@ class AdminUserSummary(BaseModel):
 
 class SystemHealth(BaseModel):
     db_ok: bool
-    redis_ok: bool
+    token_store_ok: bool
     total_users: int
     total_orgs: int
     total_api_keys: int

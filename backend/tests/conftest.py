@@ -1,11 +1,8 @@
 """Shared pytest fixtures.
 
-We rely on a live Postgres + Redis (started by ``docker compose -f
-infra/docker-compose.yml up``). Each test runs inside a SAVEPOINT-wrapped
+We rely on local PostgreSQL. Each test runs inside a SAVEPOINT-wrapped
 transaction that is rolled back at teardown so tests are fully isolated
 without paying the cost of recreating the schema.
-
-Redis isolation: the test fixture uses DB 15 and ``FLUSHDB`` between tests.
 """
 
 from __future__ import annotations
@@ -15,35 +12,41 @@ from collections.abc import AsyncIterator, Iterator
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from redis.asyncio import Redis
+from sqlalchemy import text
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from dogeapi.db import get_session
 from dogeapi.main import create_app
 from dogeapi.settings import Settings, get_settings
+from dogeapi.token_store import PostgresTokenStore
 
-TEST_DB_NAME = "dogeapi_test"
-TEST_DB_URL_ASYNC = f"postgresql+asyncpg://dogeapi:dogeapi@localhost:5432/{TEST_DB_NAME}"
-TEST_DB_URL_SYNC = f"postgresql+psycopg://dogeapi:dogeapi@localhost:5432/{TEST_DB_NAME}"
-TEST_REDIS_URL = "redis://localhost:6379/15"
+_base_settings = get_settings()
+TEST_DB_NAME = f"{make_url(_base_settings.DATABASE_URL_SYNC).database}_test"
+TEST_DB_URL_ASYNC = make_url(_base_settings.DATABASE_URL).set(database=TEST_DB_NAME).render_as_string(hide_password=False)
+TEST_DB_URL_SYNC = make_url(_base_settings.DATABASE_URL_SYNC).set(database=TEST_DB_NAME).render_as_string(hide_password=False)
+TEST_REDIS_URL = "redis://localhost:6379/15"  # Redis-only legacy tests
 
 
 def _ensure_test_database() -> None:
     """Create + migrate the test database if it doesn't already exist."""
     import psycopg
+    from psycopg import sql
+
+    maintenance_url = make_url(_base_settings.DATABASE_URL_SYNC).set(database="postgres")
 
     with (
         psycopg.connect(
-            "postgresql://dogeapi:dogeapi@localhost:5432/postgres",
+            maintenance_url.render_as_string(hide_password=False).replace("+psycopg", ""),
             autocommit=True,
         ) as conn,
         conn.cursor() as cur,
     ):
         cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (TEST_DB_NAME,))
         if cur.fetchone() is None:
-            cur.execute(f'CREATE DATABASE "{TEST_DB_NAME}" OWNER dogeapi')
+            cur.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(TEST_DB_NAME)))
 
-    with psycopg.connect(f"postgresql://dogeapi:dogeapi@localhost:5432/{TEST_DB_NAME}") as conn:
+    with psycopg.connect(TEST_DB_URL_SYNC.replace("+psycopg", "")) as conn:
         with conn.cursor() as cur:
             cur.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"')
             cur.execute('CREATE EXTENSION IF NOT EXISTS "pgcrypto"')
@@ -91,6 +94,7 @@ def settings(request: pytest.FixtureRequest) -> Iterator[Settings]:
         DATABASE_URL=TEST_DB_URL_ASYNC,
         DATABASE_URL_SYNC=TEST_DB_URL_SYNC,
         REDIS_URL=TEST_REDIS_URL,
+        TOKEN_STORE_BACKEND="postgres",
         FEATURE_API_KEYS=overrides.get("api_keys", True),
         FEATURE_AUDIT_LOG=overrides.get("audit_log", False),
         FEATURE_RATE_LIMITING=overrides.get("rate_limiting", False),
@@ -129,14 +133,16 @@ async def db_session(settings: Settings) -> AsyncIterator[AsyncSession]:
 
 
 @pytest.fixture
-async def redis_client() -> AsyncIterator[Redis]:
-    """A flushed Redis client on the test DB."""
-    client = Redis.from_url(TEST_REDIS_URL, decode_responses=False)
-    await client.flushdb()
+async def redis_client() -> AsyncIterator[PostgresTokenStore]:
+    """Compatibility fixture for core tests using PostgreSQL token storage."""
+    client = PostgresTokenStore(TEST_DB_URL_ASYNC)
+    async with client._engine.begin() as conn:
+        await conn.execute(text("DELETE FROM auth_token_store"))
     try:
         yield client
     finally:
-        await client.flushdb()
+        async with client._engine.begin() as conn:
+            await conn.execute(text("DELETE FROM auth_token_store"))
         await client.aclose()
 
 
@@ -144,7 +150,7 @@ async def redis_client() -> AsyncIterator[Redis]:
 async def client(
     settings: Settings,
     db_session: AsyncSession,
-    redis_client: Redis,
+    redis_client: PostgresTokenStore,
 ) -> AsyncIterator[AsyncClient]:
     """In-process test client with overridden DB and lifespan-skipped Redis.
 
@@ -163,7 +169,7 @@ async def client(
     async def _override_session() -> AsyncIterator[AsyncSession]:
         yield db_session
 
-    async def _override_redis() -> AsyncIterator[Redis]:
+    async def _override_redis() -> AsyncIterator[PostgresTokenStore]:
         yield redis_client
 
     app.dependency_overrides[get_session] = _override_session

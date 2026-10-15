@@ -128,12 +128,12 @@ async def system_health(
     except SQLAlchemyError:
         db_ok = False
 
-    redis_ok = True
+    token_store_ok = True
     try:
         pong = await redis.ping()
-        redis_ok = bool(pong)
+        token_store_ok = bool(pong)
     except Exception:
-        redis_ok = False
+        token_store_ok = False
 
     total_users = await session.scalar(select(func.count(User.id))) or 0
     total_orgs = await session.scalar(select(func.count(Organization.id))) or 0
@@ -141,7 +141,7 @@ async def system_health(
 
     return SystemHealth(
         db_ok=db_ok,
-        redis_ok=redis_ok,
+        token_store_ok=token_store_ok,
         total_users=total_users,
         total_orgs=total_orgs,
         total_api_keys=total_api_keys,

@@ -64,14 +64,14 @@ export default function SystemHealthPage() {
         {health ? (
           <div className="grid gap-3 sm:grid-cols-2">
             <StatusCard label="Database" ok={health.db_ok} />
-            <StatusCard label="Redis" ok={health.redis_ok} />
+            <StatusCard label="Token store" ok={health.token_store_ok} />
             <Counter label="Total tenants" value={health.total_orgs} />
             <Counter label="Total users" value={health.total_users} />
             <Counter label="Total API keys" value={health.total_api_keys} />
           </div>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
-            {["Database", "Redis", "Total tenants", "Total users"].map(
+            {["Database", "Token store", "Total tenants", "Total users"].map(
               (label) => (
                 <Card key={label}>
                   <CardHeader>

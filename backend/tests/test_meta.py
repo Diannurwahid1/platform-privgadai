@@ -29,7 +29,7 @@ class TestReadyz:
         body = response.json()
         assert body["status"] == "ready"
         assert body["db_ok"] is True
-        assert body["redis_ok"] is True
+        assert body["token_store_ok"] is True
 
 
 class TestRoot:
@@ -39,7 +39,7 @@ class TestRoot:
         response = await client.get("/")
         assert response.status_code == 200
         body = response.json()
-        assert body["name"] == "AI Template"
+        assert body["name"] == "PrivGadai"
         assert "version" in body
 
 
@@ -50,4 +50,4 @@ class TestOpenAPI:
         response = await client.get("/openapi.json")
         assert response.status_code == 200
         schema = response.json()
-        assert schema["info"]["title"] == "AI Template"
+        assert schema["info"]["title"] == "PrivGadai"

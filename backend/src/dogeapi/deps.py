@@ -7,29 +7,30 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from functools import lru_cache
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
 from authx import AuthX, TokenPayload
 from fastapi import Depends, HTTPException, Request, status
-from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dogeapi.auth.service import get_user_by_id
 from dogeapi.db import get_session
 from dogeapi.models import Role, User
 from dogeapi.settings import Settings, get_settings
+from dogeapi.token_store import create_token_store
 
 
 @lru_cache(maxsize=1)
-def _get_redis() -> Redis:
-    """Process-wide async Redis client."""
-    return Redis.from_url(get_settings().REDIS_URL, decode_responses=False)
+def _get_redis() -> Any:
+    """Fallback token store for calls made outside an application lifespan."""
+    return create_token_store(get_settings())
 
 
-async def get_redis() -> AsyncIterator[Redis]:
-    """FastAPI dep for the Redis client."""
-    yield _get_redis()
+async def get_redis(request: Request) -> AsyncIterator[Any]:
+    """FastAPI dep for the configured short-lived token store."""
+    store = getattr(request.app.state, "redis", None)
+    yield store if store is not None else _get_redis()
 
 
 def get_authx_from_request(request: Request) -> AuthX:
@@ -127,7 +128,7 @@ def get_app_settings(request: Request) -> Settings:
 
 SettingsDep = Annotated[Settings, Depends(get_app_settings)]
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
-RedisDep = Annotated[Redis, Depends(get_redis)]
+RedisDep = Annotated[Any, Depends(get_redis)]
 AuthDep = Annotated[AuthX, Depends(get_authx_from_request)]
 TokenDep = Annotated[TokenPayload, Depends(get_token_payload)]
 UserDep = Annotated[User, Depends(get_current_user)]

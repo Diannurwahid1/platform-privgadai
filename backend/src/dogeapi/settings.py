@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     DATABASE_URL_SYNC: str = "postgresql+psycopg://dogeapi:dogeapi@localhost:5432/dogeapi"
 
     REDIS_URL: str = "redis://localhost:6379/0"
+    TOKEN_STORE_BACKEND: Literal["postgres", "redis"] = "postgres"
 
     JWT_SECRET_KEY: str = "change-me"
     JWT_ALGORITHM: str = "HS256"
@@ -54,7 +55,7 @@ class Settings(BaseSettings):
 
     FEATURE_API_KEYS: bool = True
     FEATURE_AUDIT_LOG: bool = True
-    FEATURE_RATE_LIMITING: bool = True
+    FEATURE_RATE_LIMITING: bool = False
     FEATURE_OAUTH: bool = False
     FEATURE_MAGIC_LINK: bool = False
     FEATURE_EMAIL_DELIVERY: bool = False
@@ -125,6 +126,10 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def validate_production_readiness(self) -> Settings:
         """Fail fast when production runs with placeholder or unsafe config."""
+        if self.TOKEN_STORE_BACKEND == "postgres" and (
+            self.FEATURE_RATE_LIMITING or self.FEATURE_AI_CHAT
+        ):
+            raise ValueError("Redis is required for rate limiting and the template AI chat module")
         if self.is_production:
             if (
                 self.JWT_SECRET_KEY

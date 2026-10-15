@@ -37,7 +37,7 @@ export type AuditEntry = {
 
 export type SystemHealth = {
   db_ok: boolean;
-  redis_ok: boolean;
+  token_store_ok: boolean;
   total_users: number;
   total_orgs: number;
   total_api_keys: number;

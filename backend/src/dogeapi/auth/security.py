@@ -13,6 +13,7 @@ from authx import AuthX, AuthXConfig
 from redis.asyncio import Redis
 
 from dogeapi.settings import Settings, get_settings
+from dogeapi.token_store import PostgresTokenStore
 
 
 def _make_config(settings: Settings) -> AuthXConfig:
@@ -29,12 +30,12 @@ def _make_config(settings: Settings) -> AuthXConfig:
     )
 
 
-def build_authx(settings: Settings, redis: Redis | None = None) -> AuthX:
-    """Construct an ``AuthX`` instance + wire token blocklist to Redis.
+def build_authx(settings: Settings, redis: Redis | PostgresTokenStore | None = None) -> AuthX:
+    """Construct an ``AuthX`` instance + wire token blocklist to a store.
 
     Args:
         settings: Application settings.
-        redis: Optional async redis client. When provided, refresh+access
+        redis: Optional async token store. When provided, refresh+access
             tokens can be revoked via :meth:`AuthX.set_token_blocklist`
             so logout takes immediate effect across replicas.
     """
@@ -52,7 +53,7 @@ def build_authx(settings: Settings, redis: Redis | None = None) -> AuthX:
 
 @lru_cache(maxsize=1)
 def get_authx() -> AuthX:
-    """Process-wide ``AuthX`` instance (no Redis blocklist).
+    """Process-wide ``AuthX`` instance (no shared token blocklist).
 
     For request-scoped use ``app.state.authx`` set up in :mod:`dogeapi.main`.
     """

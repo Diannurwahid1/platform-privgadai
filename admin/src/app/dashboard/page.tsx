@@ -80,7 +80,7 @@ export default function AdminDashboardPage() {
               </p>
               <div className="mt-5 space-y-3">
                 <HealthLine label="Database" ok={health?.db_ok} />
-                <HealthLine label="Redis" ok={health?.redis_ok} />
+                <HealthLine label="Token store" ok={health?.token_store_ok} />
               </div>
             </div>
           </div>

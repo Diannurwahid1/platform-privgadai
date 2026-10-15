@@ -84,7 +84,7 @@ class TestUsers:
 
 
 class TestSystemHealth:
-    async def test_returns_db_and_redis_status(self, client: AsyncClient, db_session: AsyncSession) -> None:
+    async def test_returns_db_and_token_store_status(self, client: AsyncClient, db_session: AsyncSession) -> None:
         admin = await _signup(client, "admin@example.com")
         await _make_superadmin(db_session, "admin@example.com")
 
@@ -92,5 +92,5 @@ class TestSystemHealth:
         assert response.status_code == 200
         body = response.json()
         assert body["db_ok"] is True
-        assert body["redis_ok"] is True
+        assert body["token_store_ok"] is True
         assert body["total_users"] >= 1
