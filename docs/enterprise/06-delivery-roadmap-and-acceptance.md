@@ -79,7 +79,8 @@ Exit: transaksi uang mempunyai source event, balanced journal, receipt, dan reko
 - [ ] F6-02: approval inbox, separation of duty, delegation, escalation.
   - Approval ledger generik, snapshot keputusan, SLA, histori append-only, dan pencegahan maker menjadi checker sudah tersedia.
   - Appraisal, stock opname, pelepasan agunan setelah settlement, reversal jurnal, dan sign-off laporan regulator sudah masuk approval inbox.
-  - Delegation, out-of-office routing, dan escalation otomatis masih dilanjutkan.
+  - Delegasi/out-of-office berjangka, pencabutan tanpa menghapus histori, jejak keputusan delegasi, dan sweep eskalasi SLA dua tingkat sudah tersedia.
+  - Integrasi scheduler terkelola untuk menjalankan sweep tanpa tindakan operator masih menjadi deployment task.
 - [ ] F6-03: exception case dan investigation workflow.
 - [ ] F6-04: complaint/support ticket dan SLA.
 - [ ] F6-05: configuration workbench versioned/effective-dated.

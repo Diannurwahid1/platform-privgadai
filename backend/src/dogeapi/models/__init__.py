@@ -6,7 +6,7 @@ Alembic's autogenerate sees them via ``Base.metadata``.
 
 from dogeapi.models.ai import AIMessage, AIThread
 from dogeapi.models.api_key import APIKey
-from dogeapi.models.approval import ApprovalEvent, ApprovalRequest
+from dogeapi.models.approval import ApprovalDelegation, ApprovalEvent, ApprovalRequest
 from dogeapi.models.audit_log import AuditLog
 from dogeapi.models.auth_token import AuthTokenStore
 from dogeapi.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -61,6 +61,7 @@ __all__ = (
     "APIKey",
     "AccountingPeriod",
     "ApplicationStatusHistory",
+    "ApprovalDelegation",
     "ApprovalEvent",
     "ApprovalRequest",
     "Asset",

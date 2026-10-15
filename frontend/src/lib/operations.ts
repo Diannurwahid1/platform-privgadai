@@ -276,6 +276,13 @@ export type ApprovalQueueItem = {
   action: string; version: number; requested_by_user_id: string; assigned_role: string; status: string;
   priority: string; request_reason: string; payload_snapshot: Record<string, unknown>; due_at: string | null;
   decided_by_user_id: string | null; decided_at: string | null; decision_reason: string | null; created_at: string;
+  escalation_level: number; escalated_at: string | null; decided_under_delegation_id: string | null;
+  events: Array<{ id: string; event_type: string; actor_user_id: string | null; from_status: string | null; to_status: string; reason: string | null; occurred_at: string }>;
+};
+export type ApprovalDelegation = {
+  id: string; delegator_user_id: string; delegate_user_id: string; delegate_name: string;
+  branch_id: string | null; assigned_role: string; starts_at: string; ends_at: string;
+  reason: string; revoked_at: string | null; created_at: string;
 };
 export type InventoryCheckDetail = {
   id: string;
@@ -434,6 +441,13 @@ export const reviewCustomerKyc = (customerId: string, verificationId: string, js
 export const listApprovals = () => apiFetch<ApprovalQueueItem[]>("/v1/approvals");
 export const decideApproval = (id: string, decision: "approved" | "rejected", reason: string) =>
   apiFetch<{ id: string; status: string; message: string }>(`/v1/approvals/${id}/decision`, { method: "POST", json: { decision, reason } });
+export const listApprovalDelegations = () => apiFetch<ApprovalDelegation[]>("/v1/approvals/delegations");
+export const createApprovalDelegation = (json: Record<string, unknown>) =>
+  apiFetch<{ id: string; status: string; message: string }>("/v1/approvals/delegations", { method: "POST", json });
+export const revokeApprovalDelegation = (id: string) =>
+  apiFetch<{ id: string; status: string; message: string }>(`/v1/approvals/delegations/${id}/revoke`, { method: "POST" });
+export const runApprovalEscalations = () =>
+  apiFetch<{ count: number; message: string }>("/v1/approvals/escalations/run", { method: "POST" });
 export const listDomainEvents = (limit = 200) => apiFetch<DomainEvent[]>(`/v1/domain-events?limit=${limit}`);
 export const listInventoryChecks = () => apiFetch<Array<Record<string, unknown>>>("/v1/inventory-checks");
 export const createInventoryCheck = (location_id: string) =>

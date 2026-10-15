@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from dogeapi.models import (
     AccountingPeriod,
+    ApprovalDelegation,
     ApprovalEvent,
     ApprovalRequest,
     Asset,
@@ -21,6 +22,7 @@ from dogeapi.models import (
     Membership,
     RegulatoryReportRun,
     StaffAssignment,
+    User,
 )
 
 
@@ -113,12 +115,13 @@ async def decide_approval(
         raise HTTPException(status.HTTP_409_CONFLICT, "Approval sudah diputuskan")
     if item.requested_by_user_id == actor_id:
         raise HTTPException(status.HTTP_409_CONFLICT, "Maker tidak boleh menjadi checker untuk approval yang sama")
-    await _ensure_checker_role(session, item, actor_id)
+    delegation_id = await _ensure_checker_role(session, item, actor_id)
     previous = item.status
     item.status = decision
     item.decided_by_user_id = actor_id
     item.decided_at = datetime.now(UTC)
     item.decision_reason = reason
+    item.decided_under_delegation_id = delegation_id
     if item.aggregate_type == "appraisal" and item.action == "approve_appraisal":
         appraisal = await session.scalar(
             select(HumanAppraisal)
@@ -194,14 +197,14 @@ async def decide_approval(
     return item
 
 
-async def _ensure_checker_role(session: AsyncSession, item: ApprovalRequest, actor_id: UUID) -> None:
+async def _ensure_checker_role(session: AsyncSession, item: ApprovalRequest, actor_id: UUID) -> UUID | None:
     membership = await session.scalar(
         select(Membership).where(Membership.org_id == item.org_id, Membership.user_id == actor_id)
     )
     if membership is None:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Checker tidak memiliki membership pada tenant aktif")
     if membership.role.value in {"owner", "admin"}:
-        return
+        return None
     criteria = [
         StaffAssignment.org_id == item.org_id,
         StaffAssignment.user_id == actor_id,
@@ -211,8 +214,193 @@ async def _ensure_checker_role(session: AsyncSession, item: ApprovalRequest, act
     if item.branch_id is not None:
         criteria.append(StaffAssignment.branch_id == item.branch_id)
     assignment = await session.scalar(select(StaffAssignment).where(*criteria))
-    if assignment is None:
+    if assignment is not None:
+        return None
+    now = datetime.now(UTC)
+    delegation = await session.scalar(
+        select(ApprovalDelegation).where(
+            ApprovalDelegation.org_id == item.org_id,
+            ApprovalDelegation.delegate_user_id == actor_id,
+            ApprovalDelegation.assigned_role == item.assigned_role,
+            ApprovalDelegation.revoked_at.is_(None),
+            ApprovalDelegation.starts_at <= now,
+            ApprovalDelegation.ends_at >= now,
+            (ApprovalDelegation.branch_id.is_(None) | (ApprovalDelegation.branch_id == item.branch_id)),
+        )
+    )
+    if delegation is None:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Peran atau cabang checker tidak sesuai penugasan approval")
+    return delegation.id
+
+
+async def create_delegation(
+    session: AsyncSession,
+    *,
+    org_id: UUID,
+    actor_id: UUID,
+    delegator_user_id: UUID,
+    delegate_user_id: UUID,
+    branch_id: UUID | None,
+    assigned_role: str,
+    starts_at: datetime,
+    ends_at: datetime,
+    reason: str,
+) -> ApprovalDelegation:
+    if delegator_user_id == delegate_user_id:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Delegator dan penerima delegasi harus berbeda")
+    if ends_at <= starts_at or ends_at <= datetime.now(UTC):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Periode delegasi tidak valid")
+    actor_membership = await session.scalar(
+        select(Membership).where(Membership.org_id == org_id, Membership.user_id == actor_id)
+    )
+    if actor_membership is None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Aktor bukan anggota tenant")
+    if actor_id != delegator_user_id and actor_membership.role.value not in {"owner", "admin"}:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Hanya admin yang dapat membuat delegasi untuk pengguna lain")
+    await _ensure_user_holds_role(session, org_id, delegator_user_id, assigned_role, branch_id)
+    delegate_membership = await session.scalar(
+        select(Membership).where(Membership.org_id == org_id, Membership.user_id == delegate_user_id)
+    )
+    if delegate_membership is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Penerima delegasi bukan anggota tenant")
+    overlap = await session.scalar(
+        select(ApprovalDelegation.id).where(
+            ApprovalDelegation.org_id == org_id,
+            ApprovalDelegation.delegator_user_id == delegator_user_id,
+            ApprovalDelegation.assigned_role == assigned_role,
+            ApprovalDelegation.branch_id.is_not_distinct_from(branch_id),
+            ApprovalDelegation.revoked_at.is_(None),
+            ApprovalDelegation.starts_at < ends_at,
+            ApprovalDelegation.ends_at > starts_at,
+        )
+    )
+    if overlap is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Delegasi aktif pada peran dan periode tersebut sudah ada")
+    delegation = ApprovalDelegation(
+        org_id=org_id,
+        delegator_user_id=delegator_user_id,
+        delegate_user_id=delegate_user_id,
+        branch_id=branch_id,
+        assigned_role=assigned_role,
+        starts_at=starts_at,
+        ends_at=ends_at,
+        reason=reason,
+    )
+    session.add(delegation)
+    await session.flush()
+    return delegation
+
+
+async def _ensure_user_holds_role(
+    session: AsyncSession, org_id: UUID, user_id: UUID, assigned_role: str, branch_id: UUID | None
+) -> None:
+    membership = await session.scalar(
+        select(Membership).where(Membership.org_id == org_id, Membership.user_id == user_id)
+    )
+    if membership is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Delegator bukan anggota tenant")
+    if membership.role.value in {"owner", "admin"}:
+        return
+    criteria = [
+        StaffAssignment.org_id == org_id,
+        StaffAssignment.user_id == user_id,
+        StaffAssignment.operational_role == assigned_role,
+        StaffAssignment.is_active,
+    ]
+    if branch_id is not None:
+        criteria.append(StaffAssignment.branch_id == branch_id)
+    if await session.scalar(select(StaffAssignment.id).where(*criteria)) is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Delegator tidak memegang peran yang didelegasikan")
+
+
+async def list_delegations(session: AsyncSession, org_id: UUID) -> list[dict[str, object]]:
+    rows = list(
+        (
+            await session.execute(
+                select(ApprovalDelegation, User.full_name, User.email)
+                .join(User, User.id == ApprovalDelegation.delegate_user_id)
+                .where(ApprovalDelegation.org_id == org_id)
+                .order_by(ApprovalDelegation.created_at.desc())
+            )
+        ).all()
+    )
+    return [
+        {
+            "id": item.id,
+            "delegator_user_id": item.delegator_user_id,
+            "delegate_user_id": item.delegate_user_id,
+            "delegate_name": full_name or email,
+            "branch_id": item.branch_id,
+            "assigned_role": item.assigned_role,
+            "starts_at": item.starts_at,
+            "ends_at": item.ends_at,
+            "reason": item.reason,
+            "revoked_at": item.revoked_at,
+            "created_at": item.created_at,
+        }
+        for item, full_name, email in rows
+    ]
+
+
+async def revoke_delegation(
+    session: AsyncSession, org_id: UUID, delegation_id: UUID, actor_id: UUID
+) -> ApprovalDelegation:
+    delegation = await session.scalar(
+        select(ApprovalDelegation)
+        .where(ApprovalDelegation.org_id == org_id, ApprovalDelegation.id == delegation_id)
+        .with_for_update()
+    )
+    if delegation is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Delegasi tidak ditemukan")
+    actor_membership = await session.scalar(
+        select(Membership).where(Membership.org_id == org_id, Membership.user_id == actor_id)
+    )
+    is_admin = actor_membership is not None and actor_membership.role.value in {"owner", "admin"}
+    if actor_id != delegation.delegator_user_id and not is_admin:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Delegasi hanya dapat dicabut delegator atau admin")
+    if delegation.revoked_at is None:
+        delegation.revoked_at = datetime.now(UTC)
+        delegation.revoked_by_user_id = actor_id
+        await session.flush()
+    return delegation
+
+
+async def escalate_overdue_approvals(session: AsyncSession, org_id: UUID, actor_id: UUID) -> int:
+    now = datetime.now(UTC)
+    rows = list(
+        await session.scalars(
+            select(ApprovalRequest)
+            .where(
+                ApprovalRequest.org_id == org_id,
+                ApprovalRequest.status == "pending",
+                ApprovalRequest.due_at <= now,
+                ApprovalRequest.escalation_level < 2,
+            )
+            .order_by(ApprovalRequest.due_at)
+            .limit(200)
+            .with_for_update(skip_locked=True)
+        )
+    )
+    for item in rows:
+        previous_role = item.assigned_role
+        item.escalation_level += 1
+        item.escalated_at = now
+        item.priority = "high" if item.escalation_level == 1 else "critical"
+        item.assigned_role = "branch_manager" if item.escalation_level == 1 else "ops_admin"
+        item.due_at = now + timedelta(hours=4 if item.escalation_level == 1 else 2)
+        session.add(
+            ApprovalEvent(
+                org_id=org_id,
+                approval_id=item.id,
+                actor_user_id=actor_id,
+                event_type="ApprovalEscalated",
+                from_status="pending",
+                to_status="pending",
+                reason=f"SLA terlewati; routing {previous_role} → {item.assigned_role}",
+            )
+        )
+    await session.flush()
+    return len(rows)
 
 
 async def _decide_custody_release(session: AsyncSession, item: ApprovalRequest, actor_id: UUID, decision: str) -> None:
@@ -257,6 +445,28 @@ async def approval_queue(session: AsyncSession, org_id: UUID) -> list[dict[str, 
             .limit(500)
         )
     )
+    approval_ids = [item.id for item in rows]
+    events_by_approval: dict[UUID, list[dict[str, object]]] = {approval_id: [] for approval_id in approval_ids}
+    if approval_ids:
+        events = list(
+            await session.scalars(
+                select(ApprovalEvent)
+                .where(ApprovalEvent.org_id == org_id, ApprovalEvent.approval_id.in_(approval_ids))
+                .order_by(ApprovalEvent.occurred_at)
+            )
+        )
+        for event in events:
+            events_by_approval[event.approval_id].append(
+                {
+                    "id": event.id,
+                    "event_type": event.event_type,
+                    "actor_user_id": event.actor_user_id,
+                    "from_status": event.from_status,
+                    "to_status": event.to_status,
+                    "reason": event.reason,
+                    "occurred_at": event.occurred_at,
+                }
+            )
     return [
         {
             "id": item.id,
@@ -276,6 +486,10 @@ async def approval_queue(session: AsyncSession, org_id: UUID) -> list[dict[str, 
             "decided_by_user_id": item.decided_by_user_id,
             "decided_at": item.decided_at,
             "decision_reason": item.decision_reason,
+            "escalation_level": item.escalation_level,
+            "escalated_at": item.escalated_at,
+            "decided_under_delegation_id": item.decided_under_delegation_id,
+            "events": events_by_approval[item.id],
             "created_at": item.created_at,
         }
         for item in rows
