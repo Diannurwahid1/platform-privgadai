@@ -10,6 +10,8 @@ from sqlalchemy import select
 from dogeapi.deps import OrgIdDep, SessionDep, UserDep
 from dogeapi.models import (
     ApplicationStatusHistory,
+    ApprovalEvent,
+    ApprovalRequest,
     Asset,
     Borrower,
     Branch,
@@ -309,6 +311,17 @@ async def domain_events(session: SessionDep, org_id: OrgIdDep, limit: int = 200)
             .limit(safe_limit)
         )
     ).all()
+    approval_rows = (
+        await session.execute(
+            select(ApprovalEvent, ApprovalRequest)
+            .join(
+                ApprovalRequest, (ApprovalRequest.id == ApprovalEvent.approval_id) & (ApprovalRequest.org_id == org_id)
+            )
+            .where(ApprovalEvent.org_id == org_id)
+            .order_by(ApprovalEvent.occurred_at.desc())
+            .limit(safe_limit)
+        )
+    ).all()
 
     events: list[dict[str, object]] = []
     for history, application in status_rows:
@@ -400,6 +413,28 @@ async def domain_events(session: SessionDep, org_id: OrgIdDep, limit: int = 200)
                     "to_status": event.to_status,
                     "risk_level": verification.risk_level,
                     "document_type": verification.document_type,
+                },
+            }
+        )
+    for event, approval in approval_rows:
+        events.append(
+            {
+                "id": event.id,
+                "event_type": event.event_type,
+                "category": "approval",
+                "title": f"Approval {approval.aggregate_reference} menjadi {event.to_status}",
+                "description": event.reason or approval.request_reason,
+                "aggregate_type": "approval",
+                "aggregate_id": approval.id,
+                "aggregate_reference": approval.aggregate_reference,
+                "actor_id": event.actor_user_id,
+                "occurred_at": event.occurred_at,
+                "metadata": {
+                    "action": approval.action,
+                    "target_type": approval.aggregate_type,
+                    "target_id": str(approval.aggregate_id),
+                    "from_status": event.from_status,
+                    "to_status": event.to_status,
                 },
             }
         )

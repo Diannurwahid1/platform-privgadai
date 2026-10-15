@@ -5,11 +5,13 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from fastapi import HTTPException
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from dogeapi.models import KycVerification, LoanApplication, User
+from dogeapi.models import ApprovalRequest, KycVerification, LoanApplication, User
+from dogeapi.operations import approval_service
 from dogeapi.operations.state_machine import APPLICATION_TRANSITIONS, COLLATERAL_TRANSITIONS, can_transition
 
 
@@ -184,6 +186,30 @@ async def test_complete_mvp_workflow_is_tenant_scoped(client: AsyncClient, db_se
         headers=headers,
     )
     assert appraisal.status_code == 201, appraisal.text
+    approval = await db_session.scalar(
+        select(ApprovalRequest).where(ApprovalRequest.aggregate_id == appraisal.json()["id"])
+    )
+    assert approval is not None and approval.status == "pending"
+    with pytest.raises(HTTPException) as maker_decision:
+        await approval_service.decide_approval(
+            db_session,
+            application.org_id,
+            approval.id,
+            actor.id,
+            "approved",
+            "Maker must not approve their own request",
+        )
+    assert getattr(maker_decision.value, "status_code", None) == 409
+    checker = User(email="mvp-checker@example.com", full_name="MVP Checker")
+    db_session.add(checker)
+    await db_session.flush()
+    approved = await approval_service.decide_approval(
+        db_session, application.org_id, approval.id, checker.id, "approved", "Nilai dan bukti appraisal sesuai"
+    )
+    assert approved.status == "approved"
+    approvals = await client.get("/v1/approvals", headers=headers)
+    assert approvals.status_code == 200, approvals.text
+    assert approvals.json()[0]["status"] == "approved"
     offer = await client.post(
         "/v1/offers",
         json={

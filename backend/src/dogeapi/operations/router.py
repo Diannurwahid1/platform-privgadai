@@ -250,7 +250,10 @@ async def create_appraisal(data: AppraisalCreate, session: SessionDep, org_id: O
     item = await mvp_service.create_appraisal(session, org_id, user.id, data)
     await session.commit()
     return ActionResult(
-        id=item.id, application_id=item.application_id, status=item.status, message="Appraisal recorded"
+        id=item.id,
+        application_id=item.application_id,
+        status=item.status,
+        message="Appraisal submitted for checker approval",
     )
 
 

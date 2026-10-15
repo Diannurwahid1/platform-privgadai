@@ -542,11 +542,35 @@ async def create_appraisal(
         org_id=org_id,
         appraiser_user_id=actor_id,
         revision=revision,
-        status="final",
+        status="pending_approval",
         **data.model_dump(),
     )
     session.add(item)
     await session.flush()
+    from dogeapi.operations import approval_service
+
+    await approval_service.request_approval(
+        session,
+        org_id=org_id,
+        branch_id=application.branch_id,
+        aggregate_type="appraisal",
+        aggregate_id=item.id,
+        aggregate_reference=application.application_no,
+        action="approve_appraisal",
+        requested_by=actor_id,
+        assigned_role="branch_manager",
+        reason=f"Appraisal revision {revision} menunggu review supervisor",
+        payload={
+            "application_id": str(application.id),
+            "revision": revision,
+            "market_value": str(item.market_value),
+            "liquidation_value": str(item.liquidation_value),
+            "recommended_loan": str(item.recommended_loan),
+            "condition_grade": item.condition_grade,
+            "rationale": item.rationale,
+        },
+        priority=application.priority,
+    )
     return item
 
 

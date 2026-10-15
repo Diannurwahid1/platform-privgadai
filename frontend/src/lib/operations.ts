@@ -271,6 +271,12 @@ export type KycQueueItem = {
   status: string; risk_level: string; verification_method: string; initiated_by_user_id: string;
   reviewed_by_user_id: string | null; created_at: string; reviewed_at: string | null; expires_at: string | null;
 };
+export type ApprovalQueueItem = {
+  id: string; branch_id: string; aggregate_type: string; aggregate_id: string; aggregate_reference: string;
+  action: string; version: number; requested_by_user_id: string; assigned_role: string; status: string;
+  priority: string; request_reason: string; payload_snapshot: Record<string, unknown>; due_at: string | null;
+  decided_by_user_id: string | null; decided_at: string | null; decision_reason: string | null; created_at: string;
+};
 
 export const listBranches = () => apiFetch<BranchItem[]>("/v1/master/branches");
 export const listAssetCategories = () =>
@@ -368,6 +374,9 @@ export const uploadKycDocument = (customerId: string, verificationId: string, fi
 };
 export const reviewCustomerKyc = (customerId: string, verificationId: string, json: Record<string, unknown>) =>
   apiFetch<{ id: string; status: string; message: string }>(`/v1/customers/${customerId}/kyc/${verificationId}/review`, { method: "POST", json });
+export const listApprovals = () => apiFetch<ApprovalQueueItem[]>("/v1/approvals");
+export const decideApproval = (id: string, decision: "approved" | "rejected", reason: string) =>
+  apiFetch<{ id: string; status: string; message: string }>(`/v1/approvals/${id}/decision`, { method: "POST", json: { decision, reason } });
 export const listDomainEvents = (limit = 200) => apiFetch<DomainEvent[]>(`/v1/domain-events?limit=${limit}`);
 export const listInventoryChecks = () => apiFetch<Array<Record<string, unknown>>>("/v1/inventory-checks");
 export const createInventoryCheck = (location_id: string) =>
