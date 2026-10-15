@@ -11,6 +11,7 @@ from dogeapi.models.audit_log import AuditLog
 from dogeapi.models.auth_token import AuthTokenStore
 from dogeapi.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 from dogeapi.models.erp import (
+    AccountingPeriod,
     Cashbox,
     CashTransaction,
     CollectionCase,
@@ -57,6 +58,7 @@ __all__ = (
     "AIMessage",
     "AIThread",
     "APIKey",
+    "AccountingPeriod",
     "ApplicationStatusHistory",
     "ApprovalEvent",
     "ApprovalRequest",

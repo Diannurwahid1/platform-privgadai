@@ -130,6 +130,27 @@ class GLAccount(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=True, server_default="true")
 
 
+class AccountingPeriod(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "accounting_periods"
+    __table_args__ = (
+        UniqueConstraint("org_id", "period_start", "period_end", name="uq_accounting_period_range"),
+        UniqueConstraint("org_id", "id", name="uq_accounting_period_org_id"),
+        CheckConstraint("period_end >= period_start", name="ck_accounting_period_dates"),
+    )
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    period_start: Mapped[date] = mapped_column(Date(), nullable=False, index=True)
+    period_end: Mapped[date] = mapped_column(Date(), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="open", server_default="open", index=True)
+    close_reason: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    closed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class JournalEntry(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "journal_entries"
     __table_args__ = (

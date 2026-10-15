@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 
 from dogeapi.deps import OrgIdDep, SessionDep, UserDep
 from dogeapi.models import (
+    AccountingPeriod,
     ApplicationStatusHistory,
     ApprovalEvent,
     ApprovalRequest,
@@ -33,6 +34,7 @@ from dogeapi.models import (
 )
 from dogeapi.operations import erp_service, mvp_service
 from dogeapi.operations.erp_schemas import (
+    AccountingPeriodCreate,
     ApprovalSubmitInput,
     CashboxFundInput,
     CollectionNoteCreate,
@@ -550,6 +552,56 @@ async def accounting_journals(session: SessionDep, org_id: OrgIdDep, user: UserD
         session, org_id, user.id, {"ops_admin", "branch_manager", "finance", "auditor"}
     )
     return await erp_service.list_journals(session, org_id)
+
+
+@router.get("/accounting/periods")
+async def accounting_periods(session: SessionDep, org_id: OrgIdDep, user: UserDep) -> list[dict[str, object]]:
+    await mvp_service.ensure_any_operational_role(
+        session, org_id, user.id, {"ops_admin", "branch_manager", "finance", "auditor"}
+    )
+    rows = list(
+        await session.scalars(
+            select(AccountingPeriod)
+            .where(AccountingPeriod.org_id == org_id)
+            .order_by(AccountingPeriod.period_start.desc())
+        )
+    )
+    return [
+        {
+            "id": item.id,
+            "period_start": item.period_start,
+            "period_end": item.period_end,
+            "status": item.status,
+            "close_reason": item.close_reason,
+            "closed_by_user_id": item.closed_by_user_id,
+            "closed_at": item.closed_at,
+        }
+        for item in rows
+    ]
+
+
+@router.post("/accounting/periods", response_model=ERPActionResult, status_code=status.HTTP_201_CREATED)
+async def create_accounting_period(
+    data: AccountingPeriodCreate, session: SessionDep, org_id: OrgIdDep, user: UserDep
+) -> ERPActionResult:
+    await mvp_service.ensure_any_operational_role(session, org_id, user.id, {"ops_admin", "finance"})
+    item = await erp_service.create_accounting_period(session, org_id, data)
+    await session.commit()
+    return ERPActionResult(id=item.id, status=item.status, message="Accounting period created")
+
+
+@router.post("/accounting/periods/{period_id}/close", response_model=ERPActionResult)
+async def close_accounting_period(
+    period_id: UUID,
+    data: ApprovalSubmitInput,
+    session: SessionDep,
+    org_id: OrgIdDep,
+    user: UserDep,
+) -> ERPActionResult:
+    await mvp_service.ensure_any_operational_role(session, org_id, user.id, {"ops_admin", "finance"})
+    item = await erp_service.request_accounting_period_close(session, org_id, user.id, period_id, data.reason)
+    await session.commit()
+    return ERPActionResult(id=item.id, status=item.status, message="Period close submitted for approval")
 
 
 @router.post(

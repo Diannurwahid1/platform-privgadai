@@ -66,6 +66,7 @@ Exit: lokasi dan status setiap agunan dapat direkonstruksi; selisih tidak dapat 
 - [ ] F5-01: teller/cashbox open, transaction, count, variance, close.
 - [ ] F5-02: payment allocation, receipt, reversal, refund.
 - [ ] F5-03: COA, posting rules, journal, period lock.
+  - COA dasar, jurnal berimbang, register dan drill-down jurnal, reversal via approval, serta accounting period lock tersedia; posting rule configurator dan reopen terkontrol masih dilanjutkan.
 - [ ] F5-04: bank/subledger/cash reconciliation dan exception.
 - [ ] F5-05: collection queue, activity, promise-to-pay, strategy.
 

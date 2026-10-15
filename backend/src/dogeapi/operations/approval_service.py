@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dogeapi.models import (
+    AccountingPeriod,
     ApprovalEvent,
     ApprovalRequest,
     Asset,
@@ -164,6 +165,20 @@ async def decide_approval(
         if decision == "approved":
             report.approved_by_user_id = actor_id
             report.approved_at = datetime.now(UTC)
+    elif item.aggregate_type == "accounting_period" and item.action == "close_accounting_period":
+        period = await session.scalar(
+            select(AccountingPeriod)
+            .where(AccountingPeriod.org_id == org_id, AccountingPeriod.id == item.aggregate_id)
+            .with_for_update()
+        )
+        if period is None or period.status != "pending_close":
+            raise HTTPException(status.HTTP_409_CONFLICT, "Accounting period tidak siap diputuskan")
+        if decision == "approved":
+            period.status = "closed"
+            period.closed_by_user_id = actor_id
+            period.closed_at = datetime.now(UTC)
+        else:
+            period.status = "open"
     session.add(
         ApprovalEvent(
             org_id=org_id,

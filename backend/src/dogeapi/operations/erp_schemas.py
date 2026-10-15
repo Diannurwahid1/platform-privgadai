@@ -32,6 +32,11 @@ class ApprovalSubmitInput(BaseModel):
     reason: str = Field(min_length=5, max_length=1000)
 
 
+class AccountingPeriodCreate(BaseModel):
+    period_start: date
+    period_end: date
+
+
 class CollectionNoteCreate(BaseModel):
     channel: str = Field(pattern="^(phone|whatsapp|visit|branch|email)$")
     note: str = Field(min_length=3, max_length=4000)

@@ -302,6 +302,10 @@ export type JournalItem = {
   total_debit: number; total_credit: number;
   lines: Array<{ account_code: string; account_name: string; debit: number; credit: number; description: string | null }>;
 };
+export type AccountingPeriod = {
+  id: string; period_start: string; period_end: string; status: string; close_reason: string | null;
+  closed_by_user_id: string | null; closed_at: string | null;
+};
 
 export const listBranches = () => apiFetch<BranchItem[]>("/v1/master/branches");
 export const listAssetCategories = () =>
@@ -384,6 +388,11 @@ export const requestJournalReversal = (id: string, reason: string) =>
     method: "POST",
     json: { reason, idempotency_key: `reversal-${id}-${Date.now()}` },
   });
+export const listAccountingPeriods = () => apiFetch<AccountingPeriod[]>("/v1/accounting/periods");
+export const createAccountingPeriod = (period_start: string, period_end: string) =>
+  apiFetch<ActionResult>("/v1/accounting/periods", { method: "POST", json: { period_start, period_end } });
+export const requestAccountingPeriodClose = (id: string, reason: string) =>
+  apiFetch<ActionResult>(`/v1/accounting/periods/${id}/close`, { method: "POST", json: { reason } });
 export const listCollections = () => apiFetch<Array<Record<string, unknown>>>("/v1/collections");
 export const listRegulatoryTemplates = () =>
   apiFetch<Array<Record<string, unknown>>>("/v1/regulatory/templates");

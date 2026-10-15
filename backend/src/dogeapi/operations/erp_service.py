@@ -8,7 +8,7 @@ import io
 import json
 import secrets
 import zipfile
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from uuid import UUID
 
@@ -18,6 +18,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dogeapi.models import (
+    AccountingPeriod,
     ApprovalRequest,
     Asset,
     Branch,
@@ -40,6 +41,7 @@ from dogeapi.models import (
     TellerSession,
 )
 from dogeapi.operations.erp_schemas import (
+    AccountingPeriodCreate,
     CollectionNoteCreate,
     FinanceOverview,
     FinancialReports,
@@ -108,6 +110,7 @@ async def post_journal(
     description: str,
     lines: list[tuple[GLAccount, Decimal, Decimal, str]],
 ) -> JournalEntry:
+    await _ensure_posting_period_open(session, org_id, datetime.now(UTC).date())
     existing = await session.scalar(
         select(JournalEntry).where(JournalEntry.org_id == org_id, JournalEntry.idempotency_key == idempotency_key)
     )
@@ -143,6 +146,100 @@ async def post_journal(
     )
     await session.flush()
     return entry
+
+
+async def _ensure_posting_period_open(session: AsyncSession, org_id: UUID, posting_date: date) -> None:
+    period_count = int(
+        (await session.scalar(select(func.count(AccountingPeriod.id)).where(AccountingPeriod.org_id == org_id))) or 0
+    )
+    if period_count == 0:
+        return
+    period = await session.scalar(
+        select(AccountingPeriod).where(
+            AccountingPeriod.org_id == org_id,
+            AccountingPeriod.period_start <= posting_date,
+            AccountingPeriod.period_end >= posting_date,
+        )
+    )
+    if period is None or period.status != "open":
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "Tanggal posting tidak berada pada accounting period yang terbuka"
+        )
+
+
+async def create_accounting_period(
+    session: AsyncSession, org_id: UUID, data: AccountingPeriodCreate
+) -> AccountingPeriod:
+    if data.period_end < data.period_start:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Rentang accounting period tidak valid")
+    overlap = await session.scalar(
+        select(AccountingPeriod).where(
+            AccountingPeriod.org_id == org_id,
+            AccountingPeriod.period_start <= data.period_end,
+            AccountingPeriod.period_end >= data.period_start,
+        )
+    )
+    if overlap is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Accounting period bertumpang tindih")
+    item = AccountingPeriod(org_id=org_id, **data.model_dump())
+    session.add(item)
+    await session.flush()
+    return item
+
+
+async def request_accounting_period_close(
+    session: AsyncSession, org_id: UUID, actor_id: UUID, period_id: UUID, reason: str
+) -> ApprovalRequest:
+    period = await session.scalar(
+        select(AccountingPeriod)
+        .where(AccountingPeriod.org_id == org_id, AccountingPeriod.id == period_id)
+        .with_for_update()
+    )
+    if period is None:
+        raise _not_found("Accounting period")
+    if period.status != "open":
+        raise HTTPException(status.HTTP_409_CONFLICT, "Accounting period tidak dapat diajukan untuk close")
+    open_tellers = int(
+        (
+            await session.scalar(
+                select(func.count(TellerSession.id)).where(
+                    TellerSession.org_id == org_id, TellerSession.status == "open"
+                )
+            )
+        )
+        or 0
+    )
+    if open_tellers:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Semua teller session harus ditutup sebelum period close")
+    report = await financial_reports(session, org_id)
+    total_debit = sum((Decimal(str(row["debit"])) for row in report.trial_balance), Decimal("0"))
+    total_credit = sum((Decimal(str(row["credit"])) for row in report.trial_balance), Decimal("0"))
+    if total_debit != total_credit:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Trial balance belum seimbang")
+    period.status = "pending_close"
+    period.close_reason = reason
+    from dogeapi.operations import approval_service
+
+    return await approval_service.request_approval(
+        session,
+        org_id=org_id,
+        branch_id=None,
+        aggregate_type="accounting_period",
+        aggregate_id=period.id,
+        aggregate_reference=f"PERIOD-{period.period_start:%Y%m%d}-{period.period_end:%Y%m%d}",
+        action="close_accounting_period",
+        requested_by=actor_id,
+        assigned_role="auditor",
+        reason=reason,
+        payload={
+            "period_start": period.period_start.isoformat(),
+            "period_end": period.period_end.isoformat(),
+            "total_debit": str(total_debit),
+            "total_credit": str(total_credit),
+        },
+        priority="high",
+        sla_hours=4,
+    )
 
 
 async def reverse_journal(

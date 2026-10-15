@@ -49,6 +49,10 @@ async def _register_and_switch(client: AsyncClient) -> tuple[dict[str, str], dic
 
 async def test_complete_mvp_workflow_is_tenant_scoped(client: AsyncClient, db_session: AsyncSession) -> None:
     base_headers, headers = await _register_and_switch(client)
+    today = datetime.now(UTC).date()
+    period_start = today.replace(day=1)
+    next_month = (period_start.replace(day=28) + timedelta(days=4)).replace(day=1)
+    period_end = next_month - timedelta(days=1)
 
     branch = await client.post(
         "/v1/master/branches",
@@ -87,6 +91,12 @@ async def test_complete_mvp_workflow_is_tenant_scoped(client: AsyncClient, db_se
         headers=headers,
     )
     assert location.status_code == 201, location.text
+    accounting_period = await client.post(
+        "/v1/accounting/periods",
+        json={"period_start": period_start.isoformat(), "period_end": period_end.isoformat()},
+        headers=headers,
+    )
+    assert accounting_period.status_code == 201, accounting_period.text
     cashboxes = await client.get("/v1/finance/cashboxes", headers=headers)
     assert cashboxes.status_code == 200, cashboxes.text
     funded = await client.post(
@@ -421,6 +431,29 @@ async def test_complete_mvp_workflow_is_tenant_scoped(client: AsyncClient, db_se
     assert passport.status_code == 200
     assert passport.json()["collateral_status"] == "release_authorized"
     assert len(passport.json()["events"]) >= 6
+
+    period_close = await client.post(
+        f"/v1/accounting/periods/{accounting_period.json()['id']}/close",
+        json={"reason": "Rekonsiliasi kas, subledger, dan trial balance periode Oktober selesai"},
+        headers=headers,
+    )
+    assert period_close.status_code == 200, period_close.text
+    period_approval = await db_session.get(ApprovalRequest, period_close.json()["id"])
+    assert period_approval is not None
+    await approval_service.decide_approval(
+        db_session,
+        application.org_id,
+        period_approval.id,
+        checker.id,
+        "approved",
+        "Closing checklist dan rekonsiliasi telah diperiksa",
+    )
+    blocked_posting = await client.post(
+        f"/v1/finance/cashboxes/{cashboxes.json()[0]['id']}/fund",
+        json={"amount": "1000", "external_reference": "LATE-POST", "idempotency_key": "late-posting-test"},
+        headers=headers,
+    )
+    assert blocked_posting.status_code == 409, blocked_posting.text
 
     other = await client.post("/orgs", json={"name": "Tenant Lain", "slug": "tenant-lain-mvp"}, headers=base_headers)
     assert other.status_code == 201
