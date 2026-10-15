@@ -1,0 +1,42 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { CalendarDays, CheckCircle2, FileCheck2, Play, ShieldCheck, TriangleAlert } from "lucide-react";
+import { ErrorState, LoadingState } from "@/components/page-state";
+import { createRegulatoryRun, listRegulatoryRuns, listRegulatoryTemplates } from "@/lib/operations";
+
+type RegulatoryData = { templates: Array<Record<string, unknown>>; runs: Array<Record<string, unknown>> };
+
+export default function RegulatoryPage() {
+  const [data, setData] = useState<RegulatoryData | null>(null);
+  const [templateId, setTemplateId] = useState("");
+  const [periodStart, setPeriodStart] = useState("");
+  const [periodEnd, setPeriodEnd] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const load = useCallback(async () => { const [templates, runs] = await Promise.all([listRegulatoryTemplates(), listRegulatoryRuns()]); setData({ templates, runs }); }, []);
+  useEffect(() => { load().catch((reason: { detail?: string }) => setError(reason.detail ?? "Workspace regulator gagal dimuat")); }, [load]);
+  const readyTemplates = useMemo(() => data?.templates.filter((item) => ["active", "approved"].includes(String(item.status))) ?? [], [data]);
+  async function generate() {
+    if (!templateId || !periodStart || !periodEnd) { setError("Pilih template dan periode laporan."); return; }
+    setBusy(true); setError(null); setNotice(null);
+    try { await createRegulatoryRun(templateId, periodStart, periodEnd); setNotice("Report run dibuat. Lanjutkan validasi dan review sebelum file digunakan."); await load(); }
+    catch (reason) { setError((reason as { detail?: string }).detail ?? "Report run gagal dibuat"); }
+    finally { setBusy(false); }
+  }
+  if (!data) return error ? <ErrorState message={error} /> : <LoadingState label="Memuat template dan report run" />;
+  return <div className="space-y-5">
+    <header className="border-b border-border pb-5"><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Reports · Regulatory</p><h1 className="mt-2 text-3xl font-bold tracking-[-0.045em]">OJK & SLIK workspace</h1><p className="mt-2 max-w-3xl text-sm text-muted-foreground">Kelola template terversi, periode, validasi, review, sign-off, file, dan bukti submission per tenant.</p></header>
+    <div className="flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><TriangleAlert className="mt-0.5 h-5 w-5 shrink-0" /><div><p className="font-semibold">Kontrol kepatuhan</p><p className="mt-1 text-xs leading-5">File hanya dapat digunakan setelah mapping disahkan, validasi resmi lulus, rekonsiliasi selesai, dan pejabat berwenang memberi sign-off.</p></div></div>
+    {error && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}{notice && <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</div>}
+    <section className="grid gap-4 xl:grid-cols-[1fr_1.5fr]">
+      <article className="rounded-2xl border border-border bg-surface p-5 shadow-[var(--pg-shadow-sm)]"><div className="flex items-center gap-2"><Play className="h-5 w-5 text-primary" /><h2 className="font-bold">Buat report run</h2></div><p className="mt-1 text-xs text-muted-foreground">Setiap run membuat revision baru dan tidak menimpa periode sebelumnya.</p><div className="mt-5 space-y-3"><label className="block text-xs font-semibold">Template<select value={templateId} onChange={(event) => setTemplateId(event.target.value)} className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 text-sm"><option value="">Pilih template</option>{readyTemplates.map((item) => <option key={String(item.id)} value={String(item.id)}>{String(item.report_type).toUpperCase()} · {String(item.code)} · v{String(item.version)}</option>)}</select></label><div className="grid grid-cols-2 gap-3"><label className="text-xs font-semibold">Mulai<input type="date" value={periodStart} onChange={(event) => setPeriodStart(event.target.value)} className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3" /></label><label className="text-xs font-semibold">Selesai<input type="date" value={periodEnd} onChange={(event) => setPeriodEnd(event.target.value)} className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3" /></label></div><button type="button" disabled={busy || !readyTemplates.length} onClick={generate} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 text-xs font-bold text-white disabled:opacity-50"><Play className="h-4 w-4" />{busy ? "Membuat…" : "Buat dan validasi"}</button></div></article>
+      <article className="overflow-hidden rounded-2xl border border-border bg-surface shadow-[var(--pg-shadow-sm)]"><div className="border-b border-border px-5 py-4"><h2 className="font-bold">Template aktif</h2><p className="mt-1 text-xs text-muted-foreground">Versi dan tanggal efektif menentukan rule yang dipakai.</p></div><div className="divide-y divide-border">{data.templates.map((item) => <div key={String(item.id)} className="grid gap-2 px-5 py-4 sm:grid-cols-[1fr_130px_120px] sm:items-center"><div><p className="text-sm font-semibold">{String(item.name)}</p><p className="mt-1 font-mono text-[11px] text-primary">{String(item.report_type).toUpperCase()} · {String(item.code)} · v{String(item.version)}</p></div><span className="text-xs text-muted-foreground">Efektif {String(item.effective_from)}</span><span className="rounded-lg bg-blue-50 px-2.5 py-1 text-center text-xs font-semibold text-blue-700">{String(item.status)}</span></div>)}</div></article>
+    </section>
+    <section className="overflow-hidden rounded-2xl border border-border bg-surface shadow-[var(--pg-shadow-sm)]"><div className="border-b border-border px-5 py-4"><h2 className="font-bold">Riwayat report run</h2><p className="mt-1 text-xs text-muted-foreground">Pipeline: extract → validate → review → approve → generate → submit → acknowledge.</p></div><div className="overflow-x-auto"><table className="w-full min-w-[880px] text-left text-sm"><thead className="border-b border-border bg-surface-soft text-[10px] uppercase tracking-wider text-muted-foreground"><tr><th className="px-5 py-3">Run</th><th className="px-5 py-3">Periode</th><th className="px-5 py-3">Revision</th><th className="px-5 py-3">Validasi</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Checksum</th></tr></thead><tbody className="divide-y divide-border">{data.runs.map((item) => <tr key={String(item.id)}><td className="px-5 py-4 font-mono text-xs text-primary">{String(item.run_no ?? item.id).slice(0, 16)}</td><td className="px-5 py-4">{String(item.period_start)} — {String(item.period_end)}</td><td className="px-5 py-4">rev {String(item.revision)}</td><td className="px-5 py-4"><span className="inline-flex items-center gap-1.5 text-xs"><ShieldCheck className="h-4 w-4 text-primary" />{String(item.validation_status ?? "pending")}</span></td><td className="px-5 py-4"><span className="rounded-lg bg-surface-blue px-2.5 py-1 text-xs font-semibold text-primary">{String(item.status)}</span></td><td className="px-5 py-4 font-mono text-[11px] text-muted-foreground">{String(item.file_checksum ?? "Belum dibuat")}</td></tr>)}</tbody></table>{!data.runs.length && <div className="px-6 py-14 text-center text-sm text-muted-foreground">Belum ada report run.</div>}</div></section>
+    <section className="grid gap-3 sm:grid-cols-3"><Control icon={CalendarDays} title="Reporting calendar" text="Due date, cutoff, owner, reviewer, dan escalation per kewajiban." /><Control icon={CheckCircle2} title="Validation workbench" text="Schema, code set, cross-field rule, dan rekonsiliasi ke sumber." /><Control icon={FileCheck2} title="Evidence & sign-off" text="Self-assessment, maker-checker, checksum, submission, acknowledgement." /></section>
+  </div>;
+}
+
+function Control({ icon: Icon, title, text }: { icon: typeof CalendarDays; title: string; text: string }) { return <article className="rounded-2xl border border-border bg-surface p-4"><Icon className="h-5 w-5 text-primary" /><h3 className="mt-3 text-sm font-bold">{title}</h3><p className="mt-1 text-xs leading-5 text-muted-foreground">{text}</p></article>; }

@@ -155,7 +155,7 @@ function QueueTable({
       )}
       <div className="border-t border-border bg-surface-soft/70 px-5 py-3">
         <Link
-          href={`/orgs/${slug}/applications`}
+          href={`/orgs/${slug}/loans/applications`}
           className="inline-flex items-center gap-2 text-xs font-semibold text-primary hover:underline"
         >
           Lihat seluruh pengajuan <ArrowRight className="h-3.5 w-3.5" />

@@ -1,16 +1,6 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { useEffect, useState } from "react";
-import { BarChart3, FileCheck2, Landmark, ShieldAlert } from "lucide-react";
-import { ErrorState, LoadingState } from "@/components/page-state";
-import { getFinancialReports, listRegulatoryRuns, listRegulatoryTemplates, type FinancialReports } from "@/lib/operations";
-
-const idr = (value: unknown) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(Number(value ?? 0));
-export default function ReportsPage() {
-  const [data, setData] = useState<{ financial: FinancialReports; templates: Array<Record<string, unknown>>; runs: Array<Record<string, unknown>> } | null>(null); const [error, setError] = useState<string | null>(null);
-  useEffect(() => { Promise.all([getFinancialReports(), listRegulatoryTemplates(), listRegulatoryRuns()]).then(([financial, templates, runs]) => setData({ financial, templates, runs })).catch((reason: { detail?: string }) => setError(reason.detail ?? "Laporan gagal dimuat")); }, []);
-  if (error) return <ErrorState message={error} />; if (!data) return <LoadingState label="Menyusun laporan keuangan dan regulasi" />;
-  return <div className="space-y-6"><header><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Reporting & business intelligence</p><h1 className="mt-2 text-3xl font-bold tracking-[-0.045em]">Financial, OJK, dan SLIK reporting</h1><p className="mt-2 text-sm text-muted-foreground">Template regulasi berversi, validasi, dan report run. Draft ini tidak mengirim data langsung ke kanal OJK.</p></header><div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-900"><ShieldAlert className="mr-2 inline h-4 w-4" />Format resmi, segmen SLIK, dan mekanisme submission harus divalidasi terhadap spesifikasi regulator serta kewajiban masing-masing mitra sebelum penggunaan resmi.</div><section className="grid gap-5 xl:grid-cols-2"><Panel title="Branch analytics" icon={BarChart3}>{data.financial.branch_analytics.map((x) => <Row key={String(x.branch_code)} a={String(x.branch_code)} b={String(x.branch_name)} c={`${String(x.applications)} · ${idr(x.requested_amount)}`} />)}</Panel><Panel title="Aging portfolio" icon={Landmark}>{data.financial.aging.map((x) => <Row key={String(x.bucket)} a={String(x.bucket)} b={`${String(x.count)} rekening`} c={idr(x.outstanding)} />)}{!data.financial.aging.length && <p className="text-xs text-muted-foreground">Belum ada aging aktif.</p>}</Panel><Panel title="Template regulasi" icon={FileCheck2}>{data.templates.map((x) => <Row key={String(x.id)} a={String(x.report_type)} b={`${String(x.code)} · ${String(x.version)}`} c={String(x.status)} />)}</Panel><Panel title="Riwayat report run" icon={FileCheck2}>{data.runs.map((x) => <Row key={String(x.id)} a={String(x.status)} b={`${String(x.period_start)} — ${String(x.period_end)}`} c={`rev ${String(x.revision)}`} />)}{!data.runs.length && <p className="text-xs text-muted-foreground">Belum ada report run.</p>}</Panel></section></div>;
+export default async function LegacyReportsPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
+  redirect(`/orgs/${slug}/reports/financial`);
 }
-function Panel({ title, icon: Icon, children }: { title: string; icon: typeof BarChart3; children: React.ReactNode }) { return <article className="rounded-[var(--pg-radius-lg)] border border-border bg-surface p-5 shadow-[var(--pg-shadow-sm)]"><div className="flex items-center gap-2"><Icon className="h-5 w-5 text-primary" /><h2 className="font-bold">{title}</h2></div><div className="mt-4 space-y-2">{children}</div></article>; }
-function Row({ a, b, c }: { a: string; b: string; c: string }) { return <div className="flex items-center gap-3 rounded-xl bg-surface-soft px-3 py-3 text-xs"><strong className="w-20 text-primary">{a}</strong><span className="flex-1">{b}</span><span className="font-semibold">{c}</span></div>; }

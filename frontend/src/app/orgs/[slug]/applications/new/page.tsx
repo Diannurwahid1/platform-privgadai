@@ -55,7 +55,7 @@ export default function NewApplicationPage() {
         consent_document_version: "PRIV-2026.1",
         submit: true,
       });
-      router.push(`/orgs/${slug}/applications/${result.application_id}`);
+      router.push(`/orgs/${slug}/loans/applications/${result.application_id}`);
     } catch (reason) {
       setError((reason as { detail?: string }).detail ?? "Pengajuan gagal dibuat");
       setBusy(false);
@@ -70,7 +70,7 @@ export default function NewApplicationPage() {
   const defaultProduct = masters.products[0];
 
   return <div className="mx-auto max-w-5xl space-y-6">
-    <header><Link href={`/orgs/${slug}/applications`} className="inline-flex items-center gap-2 text-xs font-semibold text-muted-foreground hover:text-primary"><ArrowLeft className="h-4 w-4" /> Kembali ke inbox</Link><p className="mt-5 text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Borrower intake</p><h1 className="mt-2 text-3xl font-bold tracking-[-0.045em]">Pengajuan gadai baru</h1><p className="mt-2 text-sm text-muted-foreground">Data persetujuan, nasabah, produk, dan identitas aset dicatat dalam satu transaksi tenant.</p></header>
+    <header><Link href={`/orgs/${slug}/loans/applications`} className="inline-flex items-center gap-2 text-xs font-semibold text-muted-foreground hover:text-primary"><ArrowLeft className="h-4 w-4" /> Kembali ke inbox</Link><p className="mt-5 text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Borrower intake</p><h1 className="mt-2 text-3xl font-bold tracking-[-0.045em]">Pengajuan gadai baru</h1><p className="mt-2 text-sm text-muted-foreground">Data persetujuan, nasabah, produk, dan identitas aset dicatat dalam satu transaksi tenant.</p></header>
     {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
     <form onSubmit={submit} className="space-y-5">
       <Section icon={UserRound} title="Identitas nasabah" description="Kontak ditampilkan dalam bentuk tersamarkan setelah tersimpan.">

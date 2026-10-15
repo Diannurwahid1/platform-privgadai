@@ -131,6 +131,29 @@ body {
   color: #f4f8ff;
 }
 
+.pg-sidebar-scroll {
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.32) transparent;
+}
+
+.pg-sidebar-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.pg-sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.pg-sidebar-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.28);
+}
+
+.pg-sidebar-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.45);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

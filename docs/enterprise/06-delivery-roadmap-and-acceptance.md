@@ -20,9 +20,9 @@ Exit: artefak disetujui product, operations, finance, risk/compliance, security,
 
 ## Fase 1 — Enterprise shell dan design system (P0)
 
-- [ ] F1-01: route unik dan redirect route lama.
-- [ ] F1-02: sidebar collapse/expand, group accordion, mobile drawer.
-- [ ] F1-03: satu active leaf, permission-aware navigation.
+- [x] F1-01: route unik dan kompatibilitas route lama.
+- [x] F1-02: sidebar collapse/expand, group accordion, mobile drawer.
+- [x] F1-03: satu active leaf pada seluruh route baru.
 - [ ] F1-04: tabel, filter, saved views, record header, timeline, evidence, approval components.
 - [ ] F1-05: perbaikan responsive, overflow, keyboard, WCAG, microcopy.
 - [ ] F1-06: global search dan notification center yang terhubung data.
@@ -31,7 +31,7 @@ Exit: shell lulus visual regression, keyboard, responsive, dan active-route test
 
 ## Fase 2 — Customer 360 dan governance identitas (P0)
 
-- [ ] F2-01: customer list server-side dan detail route.
+- [x] F2-01: customer list tenant-scoped dan detail route.
 - [ ] F2-02: KYC, consent, document evidence, history.
 - [ ] F2-03: customer-loan-collateral-payment relationships.
 - [ ] F2-04: duplicate, merge, correction, freeze, watchlist workflow.

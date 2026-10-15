@@ -105,8 +105,25 @@ async def test_dashboard_uses_real_tenant_scoped_operations_data(
     assert body["work_queue"][0]["borrower_name"] == "Nasabah Sintetis"
     assert body["recent_activity"][0]["to_status"] == "appraisal"
 
+    customer = await client.get(f"/v1/customers/{borrower.id}", headers=scoped_headers)
+    assert customer.status_code == 200, customer.text
+    customer_body = customer.json()
+    assert customer_body["customer_reference"] == "BRW-001"
+    assert customer_body["summary"]["application_count"] == 1
+    assert customer_body["applications"][0]["asset"]["asset_code"] == "AST-0001"
+
+    events = await client.get("/v1/domain-events", headers=scoped_headers)
+    assert events.status_code == 200, events.text
+    assert events.json()[0]["event_type"] == "ApplicationStateChanged"
+    assert events.json()[0]["aggregate_reference"] == "PG-2026-0001"
+
     _, other_scoped_headers = await _create_and_switch(client, base_headers, name="Mitra Lain", slug="mitra-lain")
     isolated = await client.get("/v1/operations/dashboard", headers=other_scoped_headers)
     assert isolated.status_code == 200
     assert isolated.json()["metrics"]["appraisal"] == 0
     assert isolated.json()["work_queue"] == []
+    isolated_customer = await client.get(f"/v1/customers/{borrower.id}", headers=other_scoped_headers)
+    assert isolated_customer.status_code == 404
+    isolated_events = await client.get("/v1/domain-events", headers=other_scoped_headers)
+    assert isolated_events.status_code == 200
+    assert isolated_events.json() == []

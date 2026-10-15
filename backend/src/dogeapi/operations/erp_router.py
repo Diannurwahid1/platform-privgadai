@@ -9,10 +9,19 @@ from sqlalchemy import select
 
 from dogeapi.deps import OrgIdDep, SessionDep, UserDep
 from dogeapi.models import (
+    ApplicationStatusHistory,
+    Asset,
+    Branch,
     Borrower,
     Cashbox,
+    CashTransaction,
+    CollectionCase,
+    CollateralEvent,
+    Consent,
     DebtorProfile,
     InventoryCheck,
+    LoanAccount,
+    LoanApplication,
     RegulatoryReportRun,
     RegulatoryReportTemplate,
     TellerSession,
@@ -65,6 +74,302 @@ async def customers(session: SessionDep, org_id: OrgIdDep) -> list[dict[str, obj
         }
         for borrower, profile in rows
     ]
+
+
+@router.get("/customers/{customer_id}")
+async def customer_detail(customer_id: UUID, session: SessionDep, org_id: OrgIdDep) -> dict[str, object]:
+    """Return a tenant-scoped customer view for operational CRM."""
+    row = (
+        await session.execute(
+            select(Borrower, DebtorProfile)
+            .join(
+                DebtorProfile,
+                (DebtorProfile.borrower_id == Borrower.id) & (DebtorProfile.org_id == org_id),
+                isouter=True,
+            )
+            .where(Borrower.org_id == org_id, Borrower.id == customer_id)
+        )
+    ).one_or_none()
+    if row is None:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Debitur tidak ditemukan")
+
+    borrower, profile = row
+    application_rows = (
+        await session.execute(
+            select(LoanApplication, Branch, Asset, LoanAccount)
+            .join(Branch, (Branch.id == LoanApplication.branch_id) & (Branch.org_id == org_id))
+            .join(
+                Asset,
+                (Asset.application_id == LoanApplication.id) & (Asset.org_id == org_id),
+                isouter=True,
+            )
+            .join(
+                LoanAccount,
+                (LoanAccount.application_id == LoanApplication.id) & (LoanAccount.org_id == org_id),
+                isouter=True,
+            )
+            .where(LoanApplication.org_id == org_id, LoanApplication.borrower_id == customer_id)
+            .order_by(LoanApplication.created_at.desc())
+        )
+    ).all()
+    application_ids = [application.id for application, _, _, _ in application_rows]
+    loan_ids = [loan.id for _, _, _, loan in application_rows if loan is not None]
+
+    consents = list(
+        await session.scalars(
+            select(Consent)
+            .where(Consent.org_id == org_id, Consent.borrower_id == customer_id)
+            .order_by(Consent.accepted_at.desc())
+        )
+    )
+    histories = []
+    if application_ids:
+        histories = list(
+            await session.scalars(
+                select(ApplicationStatusHistory)
+                .where(
+                    ApplicationStatusHistory.org_id == org_id,
+                    ApplicationStatusHistory.application_id.in_(application_ids),
+                )
+                .order_by(ApplicationStatusHistory.created_at.desc())
+                .limit(100)
+            )
+        )
+    collection_cases = []
+    if loan_ids:
+        collection_cases = list(
+            await session.scalars(
+                select(CollectionCase)
+                .where(CollectionCase.org_id == org_id, CollectionCase.loan_account_id.in_(loan_ids))
+                .order_by(CollectionCase.created_at.desc())
+            )
+        )
+
+    applications = [
+        {
+            "id": application.id,
+            "application_no": application.application_no,
+            "status": application.status,
+            "priority": application.priority,
+            "branch_code": branch.code,
+            "branch_name": branch.name,
+            "requested_amount": application.requested_amount,
+            "submitted_at": application.submitted_at,
+            "asset": (
+                {
+                    "id": asset.id,
+                    "asset_code": asset.asset_code,
+                    "category": asset.category,
+                    "label": " ".join(part for part in (asset.brand, asset.model) if part) or asset.category,
+                    "collateral_status": asset.collateral_status,
+                    "indicative_value": asset.indicative_value,
+                }
+                if asset
+                else None
+            ),
+            "loan": (
+                {
+                    "id": loan.id,
+                    "account_no": loan.account_no,
+                    "status": loan.status,
+                    "principal_amount": loan.principal_amount,
+                    "outstanding_principal": loan.outstanding_principal,
+                    "outstanding_fee": loan.outstanding_fee,
+                    "paid_amount": loan.paid_amount,
+                    "due_at": loan.due_at,
+                }
+                if loan
+                else None
+            ),
+        }
+        for application, branch, asset, loan in application_rows
+    ]
+    total_outstanding = sum(
+        (loan.outstanding_principal + loan.outstanding_fee for _, _, _, loan in application_rows if loan is not None),
+        start=0,
+    )
+
+    return {
+        "id": borrower.id,
+        "customer_reference": borrower.customer_reference,
+        "full_name": borrower.full_name,
+        "phone_masked": borrower.phone_masked,
+        "created_at": borrower.created_at,
+        "profile": {
+            "national_id_masked": profile.national_id_masked if profile else None,
+            "dati_ii_code": profile.dati_ii_code if profile else None,
+            "slik_subject_code": profile.slik_subject_code if profile else None,
+            "risk_status": profile.risk_status if profile else "normal",
+            "risk_notes": profile.risk_notes if profile else None,
+            "internal_watchlist": profile.internal_watchlist if profile else False,
+            "watchlist_reason": profile.watchlist_reason if profile else None,
+            "correction_status": profile.correction_status if profile else "none",
+        },
+        "summary": {
+            "application_count": len(applications),
+            "active_loan_count": sum(1 for item in applications if item["loan"] and item["loan"]["status"] == "active"),
+            "collateral_count": sum(1 for item in applications if item["asset"] is not None),
+            "total_outstanding": total_outstanding,
+            "open_collection_count": sum(1 for case in collection_cases if case.status not in {"resolved", "closed"}),
+        },
+        "applications": applications,
+        "consents": [
+            {
+                "id": consent.id,
+                "consent_type": consent.consent_type,
+                "document_version": consent.document_version,
+                "channel": consent.channel,
+                "accepted_at": consent.accepted_at,
+            }
+            for consent in consents
+        ],
+        "collections": [
+            {
+                "id": case.id,
+                "loan_account_id": case.loan_account_id,
+                "aging_bucket": case.aging_bucket,
+                "status": case.status,
+                "outstanding_amount": case.outstanding_amount,
+                "due_at": case.due_at,
+                "next_action_at": case.next_action_at,
+            }
+            for case in collection_cases
+        ],
+        "activity": [
+            {
+                "id": history.id,
+                "application_id": history.application_id,
+                "from_status": history.from_status,
+                "to_status": history.to_status,
+                "note": history.note,
+                "occurred_at": history.created_at,
+            }
+            for history in histories
+        ],
+    }
+
+
+@router.get("/domain-events")
+async def domain_events(session: SessionDep, org_id: OrgIdDep, limit: int = 200) -> list[dict[str, object]]:
+    """Build an auditor-friendly business event feed from append-only operational records."""
+    safe_limit = min(max(limit, 1), 500)
+    status_rows = (
+        await session.execute(
+            select(ApplicationStatusHistory, LoanApplication)
+            .join(
+                LoanApplication,
+                (LoanApplication.id == ApplicationStatusHistory.application_id)
+                & (LoanApplication.org_id == org_id),
+            )
+            .where(ApplicationStatusHistory.org_id == org_id)
+            .order_by(ApplicationStatusHistory.created_at.desc())
+            .limit(safe_limit)
+        )
+    ).all()
+    collateral_rows = (
+        await session.execute(
+            select(CollateralEvent, LoanApplication)
+            .join(
+                LoanApplication,
+                (LoanApplication.id == CollateralEvent.application_id) & (LoanApplication.org_id == org_id),
+            )
+            .where(CollateralEvent.org_id == org_id)
+            .order_by(CollateralEvent.occurred_at.desc())
+            .limit(safe_limit)
+        )
+    ).all()
+    cash_rows = list(
+        await session.scalars(
+            select(CashTransaction)
+            .where(CashTransaction.org_id == org_id)
+            .order_by(CashTransaction.occurred_at.desc())
+            .limit(safe_limit)
+        )
+    )
+    report_rows = list(
+        await session.scalars(
+            select(RegulatoryReportRun)
+            .where(RegulatoryReportRun.org_id == org_id)
+            .order_by(RegulatoryReportRun.created_at.desc())
+            .limit(safe_limit)
+        )
+    )
+
+    events: list[dict[str, object]] = []
+    for history, application in status_rows:
+        events.append(
+            {
+                "id": history.id,
+                "event_type": "ApplicationStateChanged",
+                "category": "loan",
+                "title": f"Status {application.application_no} berubah menjadi {history.to_status}",
+                "description": history.note or "Perubahan tahap proses pengajuan",
+                "aggregate_type": "application",
+                "aggregate_id": application.id,
+                "aggregate_reference": application.application_no,
+                "actor_id": history.actor_user_id,
+                "occurred_at": history.created_at,
+                "metadata": {"from_status": history.from_status, "to_status": history.to_status},
+            }
+        )
+    for event, application in collateral_rows:
+        events.append(
+            {
+                "id": event.id,
+                "event_type": event.event_type,
+                "category": "collateral",
+                "title": event.title,
+                "description": event.description or "Aktivitas chain of custody",
+                "aggregate_type": "application",
+                "aggregate_id": application.id,
+                "aggregate_reference": application.application_no,
+                "actor_id": event.actor_user_id,
+                "occurred_at": event.occurred_at,
+                "metadata": event.event_metadata,
+            }
+        )
+    for transaction in cash_rows:
+        events.append(
+            {
+                "id": transaction.id,
+                "event_type": "CashTransactionPosted",
+                "category": "finance",
+                "title": f"Transaksi kas {transaction.transaction_type} diposting",
+                "description": f"{transaction.direction} {transaction.amount} · ref {transaction.external_reference}",
+                "aggregate_type": "cash_transaction",
+                "aggregate_id": transaction.id,
+                "aggregate_reference": transaction.external_reference,
+                "actor_id": None,
+                "occurred_at": transaction.occurred_at,
+                "metadata": {
+                    "cashbox_id": str(transaction.cashbox_id),
+                    "loan_account_id": str(transaction.loan_account_id) if transaction.loan_account_id else None,
+                    "journal_entry_id": str(transaction.journal_entry_id),
+                    "amount": str(transaction.amount),
+                    "direction": transaction.direction,
+                },
+            }
+        )
+    for run in report_rows:
+        events.append(
+            {
+                "id": run.id,
+                "event_type": "RegulatoryReportRunCreated",
+                "category": "regulatory",
+                "title": f"Report run periode {run.period_start} — {run.period_end}",
+                "description": f"Revision {run.revision} · status {run.status}",
+                "aggregate_type": "regulatory_report_run",
+                "aggregate_id": run.id,
+                "aggregate_reference": f"{run.period_start}/{run.period_end}",
+                "actor_id": run.generated_by_user_id,
+                "occurred_at": run.created_at,
+                "metadata": {"template_id": str(run.template_id), "revision": run.revision, "status": run.status},
+            }
+        )
+    events.sort(key=lambda item: item["occurred_at"], reverse=True)
+    return events[:safe_limit]
 
 
 @router.get("/finance/overview", response_model=FinanceOverview)

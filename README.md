@@ -46,7 +46,9 @@ Tes backend memakai database `privgadai_test` yang dibuat otomatis dari konfigur
 
 ## Route MVP
 
-- Partner: `/orgs/[slug]`, `/applications`, `/customers`, `/master-data`, `/collateral`, `/field`, `/finance`, `/reports`, `/inventory`
+- Partner shell: `/orgs/[slug]/overview`, `/customers`, `/loans/*`, `/collateral/*`, `/finance/*`, `/reports/*`, `/compliance/*`, `/management/*`.
+- Route lama `/applications`, `/collateral`, `/field`, `/finance`, `/reports`, `/inventory`, `/audit-log`, `/master-data`, `/members`, dan `/settings` tetap kompatibel selama migrasi.
+- Setiap menu operasional memiliki route unik sehingga hanya satu leaf navigasi aktif.
 - Nasabah: `/apply/[slug]`
 - API/OpenAPI: `http://localhost:8000/docs`
 

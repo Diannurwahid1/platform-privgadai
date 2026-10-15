@@ -162,12 +162,12 @@ Panel kanan dapat menampilkan checklist, exception, dan tindakan. Perubahan stat
 
 ## Task breakdown
 
-- [ ] SHELL-001: buat konfigurasi route/menu tunggal dan typed.
-- [ ] SHELL-002: migrasikan route unik beserta redirect route lama.
-- [ ] SHELL-003: implementasi sidebar 280/72 px dan persistensi state.
-- [ ] SHELL-004: implementasi drawer mobile dan focus management.
-- [ ] SHELL-005: perbaiki scroll, overflow, sticky header, dan responsive table.
-- [ ] SHELL-006: buat command palette serta pencarian global yang benar-benar bekerja.
+- [x] SHELL-001: buat konfigurasi route/menu tunggal dan typed.
+- [x] SHELL-002: migrasikan route unik beserta kompatibilitas route lama.
+- [x] SHELL-003: implementasi sidebar 280/72 px dan persistensi state.
+- [ ] SHELL-004: lengkapi focus trap drawer mobile; drawer responsif sudah tersedia.
+- [x] SHELL-005: perbaiki scroll, overflow, sticky header, dan responsive table.
+- [x] SHELL-006: buat command palette serta pencarian global yang benar-benar bekerja.
 - [ ] SHELL-007: buat notification center berbasis event dan status terbaca.
 - [ ] DS-001: tetapkan token warna, spacing, typography, radius, elevation, dan density.
 - [ ] DS-002: buat komponen PageHeader, ContextBar, DataTable, RecordHeader, Timeline, ApprovalPanel, EvidenceList, EmptyState, dan ErrorSummary.

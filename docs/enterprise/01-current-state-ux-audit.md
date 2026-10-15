@@ -116,11 +116,11 @@ Status: **lanjut sebagai program enterprise hardening**, dengan urutan app shell
 
 ### Tugas audit yang harus ditutup
 
-- [ ] UX-001: pecah setiap menu leaf ke route unik.
-- [ ] UX-002: bangun sidebar responsive yang dapat collapse dan menyimpan preferensi pengguna.
-- [ ] UX-003: hilangkan nested scroll dan horizontal clipping.
+- [x] UX-001: pecah setiap menu leaf ke route unik.
+- [x] UX-002: bangun sidebar responsive yang dapat collapse dan menyimpan preferensi pengguna.
+- [x] UX-003: hilangkan nested scroll dan horizontal clipping.
 - [ ] UX-004: tetapkan page anatomy dan komponen enterprise bersama.
-- [ ] CRM-001: sediakan daftar, detail, relasi, tindakan, dan riwayat debitur.
+- [x] CRM-001: sediakan daftar, detail, relasi, tindakan, dan riwayat debitur.
 - [ ] AUD-001: pisahkan audit teknis dari domain event ledger.
 - [ ] CFG-001: ganti settings boilerplate dengan configuration workbench.
 - [ ] REG-001: bangun reporting workspace berbasis template resmi terversi.

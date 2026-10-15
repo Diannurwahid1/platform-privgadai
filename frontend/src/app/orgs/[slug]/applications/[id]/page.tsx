@@ -114,7 +114,7 @@ export default function ApplicationDetailPage() {
   return (
     <div className="space-y-6">
       <header>
-        <Link href={`/orgs/${slug}/applications`} className="inline-flex items-center gap-2 text-xs font-semibold text-muted-foreground hover:text-primary">
+        <Link href={`/orgs/${slug}/loans/applications`} className="inline-flex items-center gap-2 text-xs font-semibold text-muted-foreground hover:text-primary">
           <ArrowLeft className="h-4 w-4" /> Kembali ke inbox
         </Link>
         <div className="mt-4 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">

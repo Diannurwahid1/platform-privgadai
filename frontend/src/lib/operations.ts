@@ -172,6 +172,88 @@ export type FinancialReports = {
   branch_analytics: Array<Record<string, unknown>>;
 };
 
+export type CustomerListItem = {
+  id: string;
+  customer_reference: string;
+  full_name: string;
+  phone_masked: string;
+  dati_ii_code: string | null;
+  slik_subject_code: string | null;
+  risk_status: string;
+  internal_watchlist: boolean;
+  correction_status: string;
+};
+
+export type CustomerDetail = {
+  id: string;
+  customer_reference: string;
+  full_name: string;
+  phone_masked: string;
+  created_at: string;
+  profile: {
+    national_id_masked: string | null;
+    dati_ii_code: string | null;
+    slik_subject_code: string | null;
+    risk_status: string;
+    risk_notes: string | null;
+    internal_watchlist: boolean;
+    watchlist_reason: string | null;
+    correction_status: string;
+  };
+  summary: {
+    application_count: number;
+    active_loan_count: number;
+    collateral_count: number;
+    total_outstanding: number;
+    open_collection_count: number;
+  };
+  applications: Array<{
+    id: string;
+    application_no: string;
+    status: string;
+    priority: string;
+    branch_code: string;
+    branch_name: string;
+    requested_amount: number;
+    submitted_at: string | null;
+    asset: null | {
+      id: string;
+      asset_code: string;
+      category: string;
+      label: string;
+      collateral_status: string;
+      indicative_value: number | null;
+    };
+    loan: null | {
+      id: string;
+      account_no: string;
+      status: string;
+      principal_amount: number;
+      outstanding_principal: number;
+      outstanding_fee: number;
+      paid_amount: number;
+      due_at: string | null;
+    };
+  }>;
+  consents: Array<Record<string, unknown>>;
+  collections: Array<Record<string, unknown>>;
+  activity: Array<Record<string, unknown>>;
+};
+
+export type DomainEvent = {
+  id: string;
+  event_type: string;
+  category: "loan" | "collateral" | "finance" | "regulatory" | string;
+  title: string;
+  description: string;
+  aggregate_type: string;
+  aggregate_id: string;
+  aggregate_reference: string;
+  actor_id: string | null;
+  occurred_at: string;
+  metadata: Record<string, unknown>;
+};
+
 export const listBranches = () => apiFetch<BranchItem[]>("/v1/master/branches");
 export const listAssetCategories = () =>
   apiFetch<AssetCategoryItem[]>("/v1/master/asset-categories");
@@ -256,7 +338,9 @@ export const createRegulatoryRun = (template_id: string, period_start: string, p
     method: "POST",
     json: { template_id, period_start, period_end },
   });
-export const listCustomers = () => apiFetch<Array<Record<string, unknown>>>("/v1/customers");
+export const listCustomers = () => apiFetch<CustomerListItem[]>("/v1/customers");
+export const getCustomerDetail = (id: string) => apiFetch<CustomerDetail>(`/v1/customers/${id}`);
+export const listDomainEvents = (limit = 200) => apiFetch<DomainEvent[]>(`/v1/domain-events?limit=${limit}`);
 export const listInventoryChecks = () => apiFetch<Array<Record<string, unknown>>>("/v1/inventory-checks");
 export const createInventoryCheck = (location_id: string) =>
   apiFetch<ActionResult>("/v1/inventory-checks", { method: "POST", json: { location_id } });

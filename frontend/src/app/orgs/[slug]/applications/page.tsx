@@ -81,7 +81,7 @@ export default function ApplicationsInboxPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link href={`/orgs/${slug}/applications/new`} className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-xs font-bold text-white">
+          <Link href={`/orgs/${slug}/loans/applications/new`} className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-xs font-bold text-white">
             <Plus className="h-4 w-4" /> Pengajuan baru
           </Link>
           <div className="inline-flex items-center gap-2 rounded-full border border-success/25 bg-success/8 px-3 py-2 text-xs font-semibold text-success">
@@ -138,7 +138,7 @@ export default function ApplicationsInboxPage() {
                   className="border-b border-border/70 text-sm last:border-0 hover:bg-surface-soft"
                 >
                   <td className="px-5 py-4 font-mono text-xs font-semibold text-primary">
-                    <Link className="hover:underline" href={`/orgs/${slug}/applications/${item.id}`}>
+                    <Link className="hover:underline" href={`/orgs/${slug}/loans/applications/${item.id}`}>
                       {item.application_no}
                     </Link>
                   </td>
