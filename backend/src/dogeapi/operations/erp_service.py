@@ -210,6 +210,50 @@ async def reverse_journal(
     return reversal
 
 
+async def list_journals(session: AsyncSession, org_id: UUID) -> list[dict[str, object]]:
+    entries = list(
+        await session.scalars(
+            select(JournalEntry).where(JournalEntry.org_id == org_id).order_by(JournalEntry.posted_at.desc()).limit(200)
+        )
+    )
+    output: list[dict[str, object]] = []
+    for entry in entries:
+        lines = (
+            await session.execute(
+                select(JournalLine, GLAccount)
+                .join(GLAccount, (GLAccount.org_id == org_id) & (GLAccount.id == JournalLine.account_id))
+                .where(JournalLine.org_id == org_id, JournalLine.journal_entry_id == entry.id)
+                .order_by(GLAccount.code)
+            )
+        ).all()
+        output.append(
+            {
+                "id": entry.id,
+                "entry_no": entry.entry_no,
+                "event_type": entry.event_type,
+                "description": entry.description,
+                "status": entry.status,
+                "application_id": entry.application_id,
+                "reversal_of_id": entry.reversal_of_id,
+                "posted_at": entry.posted_at,
+                "created_by_user_id": entry.created_by_user_id,
+                "total_debit": sum((line.debit_amount for line, _ in lines), Decimal("0")),
+                "total_credit": sum((line.credit_amount for line, _ in lines), Decimal("0")),
+                "lines": [
+                    {
+                        "account_code": account.code,
+                        "account_name": account.name,
+                        "debit": line.debit_amount,
+                        "credit": line.credit_amount,
+                        "description": line.description,
+                    }
+                    for line, account in lines
+                ],
+            }
+        )
+    return output
+
+
 async def request_journal_reversal(
     session: AsyncSession,
     org_id: UUID,

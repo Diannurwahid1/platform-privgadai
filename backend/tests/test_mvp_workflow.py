@@ -317,6 +317,9 @@ async def test_complete_mvp_workflow_is_tenant_scoped(client: AsyncClient, db_se
     assert float(finance.json()["outstanding_principal"]) == 7_000_000
     reports = await client.get("/v1/accounting/reports", headers=headers)
     assert reports.status_code == 200, reports.text
+    journals = await client.get("/v1/accounting/journals", headers=headers)
+    assert journals.status_code == 200, journals.text
+    assert journals.json()[0]["total_debit"] == journals.json()[0]["total_credit"]
     trial = reports.json()["trial_balance"]
     assert sum(float(row["debit"]) for row in trial) == sum(float(row["credit"]) for row in trial)
     template = await client.post(

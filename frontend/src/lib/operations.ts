@@ -296,6 +296,12 @@ export type InventoryCheckDetail = {
     note: string | null;
   }>;
 };
+export type JournalItem = {
+  id: string; entry_no: string; event_type: string; description: string; status: string;
+  application_id: string | null; reversal_of_id: string | null; posted_at: string;
+  total_debit: number; total_credit: number;
+  lines: Array<{ account_code: string; account_name: string; debit: number; credit: number; description: string | null }>;
+};
 
 export const listBranches = () => apiFetch<BranchItem[]>("/v1/master/branches");
 export const listAssetCategories = () =>
@@ -372,6 +378,12 @@ export const closeTellerSession = (sessionId: string, actual_closing_balance: nu
     json: { actual_closing_balance },
   });
 export const getFinancialReports = () => apiFetch<FinancialReports>("/v1/accounting/reports");
+export const listJournals = () => apiFetch<JournalItem[]>("/v1/accounting/journals");
+export const requestJournalReversal = (id: string, reason: string) =>
+  apiFetch<ActionResult>(`/v1/accounting/journals/${id}/reverse`, {
+    method: "POST",
+    json: { reason, idempotency_key: `reversal-${id}-${Date.now()}` },
+  });
 export const listCollections = () => apiFetch<Array<Record<string, unknown>>>("/v1/collections");
 export const listRegulatoryTemplates = () =>
   apiFetch<Array<Record<string, unknown>>>("/v1/regulatory/templates");

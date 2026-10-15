@@ -544,6 +544,14 @@ async def accounting_reports(session: SessionDep, org_id: OrgIdDep, user: UserDe
     return await erp_service.financial_reports(session, org_id)
 
 
+@router.get("/accounting/journals")
+async def accounting_journals(session: SessionDep, org_id: OrgIdDep, user: UserDep) -> list[dict[str, object]]:
+    await mvp_service.ensure_any_operational_role(
+        session, org_id, user.id, {"ops_admin", "branch_manager", "finance", "auditor"}
+    )
+    return await erp_service.list_journals(session, org_id)
+
+
 @router.post(
     "/accounting/journals/{journal_id}/reverse",
     response_model=ERPActionResult,
