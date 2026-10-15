@@ -32,6 +32,7 @@ from dogeapi.models import (
     EvidenceFile,
     HumanAppraisal,
     Incident,
+    KycVerification,
     LoanAccount,
     LoanApplication,
     LoanProduct,
@@ -417,6 +418,19 @@ async def transition_application(
     )
     if not can_transition(APPLICATION_TRANSITIONS, application.status, target):
         raise _conflict(f"Cannot transition application from {application.status} to {target}")
+    if target == "appraisal":
+        verified_kyc = await session.scalar(
+            select(KycVerification.id)
+            .where(
+                KycVerification.org_id == org_id,
+                KycVerification.borrower_id == application.borrower_id,
+                KycVerification.status == "verified",
+                (KycVerification.expires_at.is_(None) | (KycVerification.expires_at > datetime.now(UTC))),
+            )
+            .limit(1)
+        )
+        if verified_kyc is None:
+            raise _conflict("KYC debitur harus terverifikasi dan masih berlaku sebelum penaksiran")
     previous = application.status
     application.status = target
     application.revision += 1

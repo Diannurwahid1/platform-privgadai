@@ -27,6 +27,7 @@ from dogeapi.models.erp import (
     TellerSession,
 )
 from dogeapi.models.invitation import Invitation
+from dogeapi.models.kyc import KycDocument, KycEvent, KycVerification
 from dogeapi.models.membership import Membership, Role
 from dogeapi.models.mvp import (
     AssetCategory,
@@ -82,6 +83,9 @@ __all__ = (
     "Invitation",
     "JournalEntry",
     "JournalLine",
+    "KycDocument",
+    "KycEvent",
+    "KycVerification",
     "LoanAccount",
     "LoanApplication",
     "LoanLedgerEntry",

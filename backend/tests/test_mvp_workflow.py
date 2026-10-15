@@ -6,7 +6,10 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from dogeapi.models import KycVerification, LoanApplication, User
 from dogeapi.operations.state_machine import APPLICATION_TRANSITIONS, COLLATERAL_TRANSITIONS, can_transition
 
 
@@ -34,7 +37,7 @@ async def _register_and_switch(client: AsyncClient) -> tuple[dict[str, str], dic
     return base, {"Authorization": f"Bearer {switched.json()['access_token']}"}
 
 
-async def test_complete_mvp_workflow_is_tenant_scoped(client: AsyncClient) -> None:
+async def test_complete_mvp_workflow_is_tenant_scoped(client: AsyncClient, db_session: AsyncSession) -> None:
     base_headers, headers = await _register_and_switch(client)
 
     branch = await client.post(
@@ -133,6 +136,32 @@ async def test_complete_mvp_workflow_is_tenant_scoped(client: AsyncClient) -> No
     )
     assert created.status_code == 201, created.text
     application_id = created.json()["application_id"]
+
+    application = await db_session.scalar(select(LoanApplication).where(LoanApplication.id == application_id))
+    actor = await db_session.scalar(select(User).where(User.email == "mvp-owner@example.com"))
+    assert application is not None and actor is not None
+    db_session.add(
+        KycVerification(
+            org_id=application.org_id,
+            borrower_id=application.borrower_id,
+            initiated_by_user_id=actor.id,
+            reviewed_by_user_id=actor.id,
+            nik_fingerprint="a" * 64,
+            national_id_masked="3471••••••0001",
+            legal_name="NASABAH UJI",
+            birth_place="Yogyakarta",
+            birth_date=datetime(1990, 1, 1, tzinfo=UTC).date(),
+            gender="male",
+            address="Alamat pengujian",
+            province="DI Yogyakarta",
+            city="Yogyakarta",
+            status="verified",
+            decision_reason="Seeded verified identity for the end-to-end workflow",
+            reviewed_at=datetime.now(UTC),
+            expires_at=datetime.now(UTC) + timedelta(days=365),
+        )
+    )
+    await db_session.flush()
 
     for next_status in ("under_review", "appraisal"):
         transitioned = await client.post(

@@ -33,6 +33,7 @@ Exit: shell lulus visual regression, keyboard, responsive, dan active-route test
 
 - [x] F2-01: customer list tenant-scoped dan detail route.
 - [ ] F2-02: KYC, consent, document evidence, history.
+  - Fondasi KTP/KYC, bukti terenkripsi, maker-checker, dan event history tersedia; provider resmi, screening, malware scan, dan ongoing monitoring masih terbuka.
 - [ ] F2-03: customer-loan-collateral-payment relationships.
 - [ ] F2-04: duplicate, merge, correction, freeze, watchlist workflow.
 - [ ] F2-05: tenant/branch/masking authorization tests.

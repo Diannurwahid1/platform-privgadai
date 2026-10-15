@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, BriefcaseBusiness, CalendarClock, Copy, FileCheck2, Landmark, PackageSearch, Plus, Printer, ShieldCheck, UserRound } from "lucide-react";
 import { ErrorState, LoadingState } from "@/components/page-state";
+import { CustomerKycWorkspace } from "@/components/customer-kyc-workspace";
 import { getCustomerDetail, type CustomerDetail } from "@/lib/operations";
 
 const idr = (value: unknown) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(Number(value ?? 0));
@@ -80,7 +81,7 @@ function Overview({ data, slug }: { data: CustomerDetail; slug: string }) {
 }
 
 function Identity({ data }: { data: CustomerDetail }) {
-  return <section className="grid gap-4 xl:grid-cols-2"><Panel title="Identitas dan referensi" subtitle="Data sensitif ditampilkan sesuai masking akses"><Definition label="Nama lengkap" value={data.full_name} /><Definition label="Nomor identitas" value={data.profile.national_id_masked ?? "Belum tersedia"} /><Definition label="Telepon" value={data.phone_masked} /><Definition label="DATI II" value={data.profile.dati_ii_code ?? "Belum dipetakan"} /><Definition label="Kode subjek SLIK" value={data.profile.slik_subject_code ?? "Belum dipetakan"} /></Panel><Panel title="Profil risiko" subtitle="Status dan catatan yang dipakai pada proses keputusan"><Definition label="Status risiko" value={labels[data.profile.risk_status] ?? data.profile.risk_status} /><Definition label="Watchlist internal" value={data.profile.internal_watchlist ? "Ya" : "Tidak"} /><Definition label="Status koreksi" value={data.profile.correction_status} /><Definition label="Catatan" value={data.profile.risk_notes ?? data.profile.watchlist_reason ?? "Tidak ada catatan"} /></Panel></section>;
+  return <div className="space-y-4"><CustomerKycWorkspace customerId={data.id} customerName={data.full_name} /><section className="grid gap-4 xl:grid-cols-2"><Panel title="Identitas dan referensi" subtitle="Data sensitif ditampilkan sesuai masking akses"><Definition label="Nama lengkap" value={data.full_name} /><Definition label="Nomor identitas" value={data.profile.national_id_masked ?? "Belum tersedia"} /><Definition label="Telepon" value={data.phone_masked} /><Definition label="DATI II" value={data.profile.dati_ii_code ?? "Belum dipetakan"} /><Definition label="Kode subjek SLIK" value={data.profile.slik_subject_code ?? "Belum dipetakan"} /></Panel><Panel title="Profil risiko" subtitle="Status dan catatan yang dipakai pada proses keputusan"><Definition label="Status risiko" value={labels[data.profile.risk_status] ?? data.profile.risk_status} /><Definition label="Watchlist internal" value={data.profile.internal_watchlist ? "Ya" : "Tidak"} /><Definition label="Status koreksi" value={data.profile.correction_status} /><Definition label="Catatan" value={data.profile.risk_notes ?? data.profile.watchlist_reason ?? "Tidak ada catatan"} /></Panel></section></div>;
 }
 
 function Facilities({ data, slug }: { data: CustomerDetail; slug: string }) {

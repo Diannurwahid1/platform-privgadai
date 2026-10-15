@@ -19,6 +19,7 @@ PrivGadai saat ini adalah **MVP internal/pilot**. Fondasi tenant, cabang, alur p
 4. [Pelaporan OJK dan SLIK](./04-ojk-slik-regulatory-reporting.md)
 5. [Audit event, keamanan, dan kontrol](./05-domain-audit-security-and-controls.md)
 6. [Roadmap implementasi dan acceptance criteria](./06-delivery-roadmap-and-acceptance.md)
+7. [KYC, CDD, dan identitas nasabah](./07-kyc-cdd-implementation.md)
 
 ## Prinsip keputusan
 

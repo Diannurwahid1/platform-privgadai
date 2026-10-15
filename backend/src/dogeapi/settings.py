@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 20
     JWT_COOKIE_SECURE: bool = False
     JWT_COOKIE_SAMESITE: Literal["lax", "strict", "none"] = "lax"
+    PII_ENCRYPTION_KEY: str = ""
 
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3001"
 
@@ -142,6 +143,8 @@ class Settings(BaseSettings):
                 raise ValueError("JWT_SECRET_KEY must be a strong production secret")
             if not self.JWT_COOKIE_SECURE:
                 raise ValueError("JWT_COOKIE_SECURE must be true in production")
+            if not self.PII_ENCRYPTION_KEY:
+                raise ValueError("PII_ENCRYPTION_KEY is required in production")
         should_validate_integrations = self.APP_ENV != "test"
 
         if should_validate_integrations and self.FEATURE_EMAIL_DELIVERY:

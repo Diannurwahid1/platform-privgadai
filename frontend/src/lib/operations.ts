@@ -254,6 +254,24 @@ export type DomainEvent = {
   metadata: Record<string, unknown>;
 };
 
+export type KycVerification = {
+  id: string; status: string; document_type: string; national_id_masked: string; legal_name: string;
+  birth_place: string; birth_date: string; gender: string; address: string; province: string; city: string;
+  occupation: string | null; verification_method: string; provider_name: string | null; provider_reference: string | null;
+  risk_level: string; face_match_score: number | null; liveness_score: number | null;
+  document_authenticity_score: number | null; pep_match: boolean; sanctions_match: boolean;
+  decision_reason: string | null; initiated_by_user_id: string; reviewed_by_user_id: string | null;
+  created_at: string; reviewed_at: string | null; expires_at: string | null;
+  documents: Array<Record<string, unknown>>; events: Array<Record<string, unknown>>;
+};
+
+export type CustomerKyc = { customer_id: string; current_status: string; verifications: KycVerification[] };
+export type KycQueueItem = {
+  id: string; customer_id: string; customer_reference: string; customer_name: string; national_id_masked: string;
+  status: string; risk_level: string; verification_method: string; initiated_by_user_id: string;
+  reviewed_by_user_id: string | null; created_at: string; reviewed_at: string | null; expires_at: string | null;
+};
+
 export const listBranches = () => apiFetch<BranchItem[]>("/v1/master/branches");
 export const listAssetCategories = () =>
   apiFetch<AssetCategoryItem[]>("/v1/master/asset-categories");
@@ -340,6 +358,16 @@ export const createRegulatoryRun = (template_id: string, period_start: string, p
   });
 export const listCustomers = () => apiFetch<CustomerListItem[]>("/v1/customers");
 export const getCustomerDetail = (id: string) => apiFetch<CustomerDetail>(`/v1/customers/${id}`);
+export const getCustomerKyc = (id: string) => apiFetch<CustomerKyc>(`/v1/customers/${id}/kyc`);
+export const listKycVerifications = () => apiFetch<KycQueueItem[]>("/v1/kyc/verifications");
+export const startCustomerKyc = (id: string, json: Record<string, unknown>) =>
+  apiFetch<{ id: string; status: string; message: string }>(`/v1/customers/${id}/kyc`, { method: "POST", json });
+export const uploadKycDocument = (customerId: string, verificationId: string, file: File, documentSide = "ktp_front") => {
+  const form = new FormData(); form.append("document_side", documentSide); form.append("file", file);
+  return apiUpload<ActionResult>(`/v1/customers/${customerId}/kyc/${verificationId}/documents`, form);
+};
+export const reviewCustomerKyc = (customerId: string, verificationId: string, json: Record<string, unknown>) =>
+  apiFetch<{ id: string; status: string; message: string }>(`/v1/customers/${customerId}/kyc/${verificationId}/review`, { method: "POST", json });
 export const listDomainEvents = (limit = 200) => apiFetch<DomainEvent[]>(`/v1/domain-events?limit=${limit}`);
 export const listInventoryChecks = () => apiFetch<Array<Record<string, unknown>>>("/v1/inventory-checks");
 export const createInventoryCheck = (location_id: string) =>

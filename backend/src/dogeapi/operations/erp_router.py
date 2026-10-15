@@ -11,15 +11,17 @@ from dogeapi.deps import OrgIdDep, SessionDep, UserDep
 from dogeapi.models import (
     ApplicationStatusHistory,
     Asset,
-    Branch,
     Borrower,
+    Branch,
     Cashbox,
     CashTransaction,
-    CollectionCase,
     CollateralEvent,
+    CollectionCase,
     Consent,
     DebtorProfile,
     InventoryCheck,
+    KycEvent,
+    KycVerification,
     LoanAccount,
     LoanApplication,
     RegulatoryReportRun,
@@ -260,8 +262,7 @@ async def domain_events(session: SessionDep, org_id: OrgIdDep, limit: int = 200)
             select(ApplicationStatusHistory, LoanApplication)
             .join(
                 LoanApplication,
-                (LoanApplication.id == ApplicationStatusHistory.application_id)
-                & (LoanApplication.org_id == org_id),
+                (LoanApplication.id == ApplicationStatusHistory.application_id) & (LoanApplication.org_id == org_id),
             )
             .where(ApplicationStatusHistory.org_id == org_id)
             .order_by(ApplicationStatusHistory.created_at.desc())
@@ -296,6 +297,18 @@ async def domain_events(session: SessionDep, org_id: OrgIdDep, limit: int = 200)
             .limit(safe_limit)
         )
     )
+    kyc_rows = (
+        await session.execute(
+            select(KycEvent, KycVerification, Borrower)
+            .join(
+                KycVerification, (KycVerification.id == KycEvent.verification_id) & (KycVerification.org_id == org_id)
+            )
+            .join(Borrower, (Borrower.id == KycVerification.borrower_id) & (Borrower.org_id == org_id))
+            .where(KycEvent.org_id == org_id)
+            .order_by(KycEvent.occurred_at.desc())
+            .limit(safe_limit)
+        )
+    ).all()
 
     events: list[dict[str, object]] = []
     for history, application in status_rows:
@@ -366,6 +379,28 @@ async def domain_events(session: SessionDep, org_id: OrgIdDep, limit: int = 200)
                 "actor_id": run.generated_by_user_id,
                 "occurred_at": run.created_at,
                 "metadata": {"template_id": str(run.template_id), "revision": run.revision, "status": run.status},
+            }
+        )
+    for event, verification, borrower in kyc_rows:
+        events.append(
+            {
+                "id": event.id,
+                "event_type": event.event_type,
+                "category": "customer",
+                "title": f"KYC {borrower.customer_reference} berubah menjadi {event.to_status}",
+                "description": event.reason or "Pemeriksaan identitas nasabah",
+                "aggregate_type": "customer",
+                "aggregate_id": borrower.id,
+                "aggregate_reference": borrower.customer_reference,
+                "actor_id": event.actor_user_id,
+                "occurred_at": event.occurred_at,
+                "metadata": {
+                    "verification_id": str(verification.id),
+                    "from_status": event.from_status,
+                    "to_status": event.to_status,
+                    "risk_level": verification.risk_level,
+                    "document_type": verification.document_type,
+                },
             }
         )
     events.sort(key=lambda item: item["occurred_at"], reverse=True)

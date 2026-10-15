@@ -7,6 +7,7 @@ import {
   ClipboardCheck,
   ClipboardList,
   ContactRound,
+  IdCard,
   FileCheck2,
   HandCoins,
   LayoutDashboard,
@@ -27,6 +28,7 @@ export type PartnerNavItem = {
   match?: "exact" | "section";
   aliases?: string[];
   exactAliases?: string[];
+  excludes?: string[];
 };
 
 export type PartnerNavGroup = { id: string; label: string; items: PartnerNavItem[] };
@@ -38,7 +40,8 @@ export function buildPartnerNavigation(slug: string): PartnerNavGroup[] {
       { id: "overview", label: "Ringkasan", href: `${root}/overview`, aliases: [root], icon: LayoutDashboard, match: "exact" },
     ] },
     { id: "customers", label: "Customers", items: [
-      { id: "customers", label: "Debitur & CRM", href: `${root}/customers`, icon: ContactRound, match: "section" },
+      { id: "customers", label: "Debitur & CRM", href: `${root}/customers`, icon: ContactRound, match: "section", excludes: [`${root}/customers/kyc`] },
+      { id: "customer-kyc", label: "KYC & CDD", href: `${root}/customers/kyc`, icon: IdCard, match: "section" },
     ] },
     { id: "loans", label: "Loans", items: [
       { id: "applications", label: "Pengajuan", href: `${root}/loans/applications`, aliases: [`${root}/applications`], icon: ClipboardList, match: "section" },
@@ -72,6 +75,7 @@ export function buildPartnerNavigation(slug: string): PartnerNavGroup[] {
 }
 
 export function isPartnerNavItemActive(item: PartnerNavItem, pathname: string) {
+  if (item.excludes?.some((candidate) => pathname === candidate || pathname.startsWith(`${candidate}/`))) return false;
   if (item.exactAliases?.includes(pathname)) return true;
   return [item.href, ...(item.aliases ?? [])].some((candidate) =>
     item.match === "exact" ? pathname === candidate : pathname === candidate || pathname.startsWith(`${candidate}/`),
