@@ -70,6 +70,8 @@ Exit: lokasi dan status setiap agunan dapat direkonstruksi; selisih tidak dapat 
   - COA dasar, jurnal berimbang, register dan drill-down jurnal, reversal via approval, serta accounting period lock tersedia; posting rule configurator dan reopen terkontrol masih dilanjutkan.
 - [ ] F5-04: bank/subledger/cash reconciliation dan exception.
 - [ ] F5-05: collection queue, activity, promise-to-pay, strategy.
+  - Queue, detail kasus, DPD/aging, strategi, stage, SLA next action, structured contact note, promise-to-pay, serta broken-promise escalation sudah tersedia.
+  - Contact policy effective-dated, evidence attachment, assignment balancing, legal case handoff, dan dialer/messaging integration masih dilanjutkan.
 
 Exit: transaksi uang mempunyai source event, balanced journal, receipt, dan rekonsiliasi.
 

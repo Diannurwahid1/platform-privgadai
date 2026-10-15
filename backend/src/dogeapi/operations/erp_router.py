@@ -37,7 +37,10 @@ from dogeapi.operations.erp_schemas import (
     AccountingPeriodCreate,
     ApprovalSubmitInput,
     CashboxFundInput,
+    CollectionCasePlanUpdate,
     CollectionNoteCreate,
+    CollectionPromiseCreate,
+    CollectionPromiseResolve,
     ERPActionResult,
     FinanceOverview,
     FinancialReports,
@@ -632,6 +635,34 @@ async def collections(session: SessionDep, org_id: OrgIdDep, user: UserDep) -> l
     return await erp_service.list_collections(session, org_id)
 
 
+@router.get("/collections/{case_id}")
+async def collection_case_detail(
+    case_id: UUID, session: SessionDep, org_id: OrgIdDep, user: UserDep
+) -> dict[str, object]:
+    await mvp_service.ensure_any_operational_role(
+        session, org_id, user.id, {"ops_admin", "branch_manager", "loan_officer", "finance"}
+    )
+    return await erp_service.collection_detail(session, org_id, case_id)
+
+
+@router.patch(
+    "/collections/{case_id}/plan",
+    response_model=ERPActionResult,
+    dependencies=[Depends(require_scope("org:collections:use"))],
+)
+async def update_collection_case_plan(
+    case_id: UUID, data: CollectionCasePlanUpdate, session: SessionDep, org_id: OrgIdDep, user: UserDep
+) -> ERPActionResult:
+    await mvp_service.ensure_any_operational_role(
+        session, org_id, user.id, {"ops_admin", "branch_manager", "loan_officer", "finance"}
+    )
+    item = await erp_service.update_collection_plan(
+        session, org_id, case_id, data.strategy, data.stage, data.next_action_at
+    )
+    await session.commit()
+    return ERPActionResult(id=item.id, status=item.status, message="Collection strategy and next action updated")
+
+
 @router.post(
     "/collections/{case_id}/notes",
     response_model=ERPActionResult,
@@ -647,6 +678,55 @@ async def collection_note(
     item = await erp_service.add_collection_note(session, org_id, user.id, case_id, data)
     await session.commit()
     return ERPActionResult(id=item.id, status="recorded", message="Collection follow-up recorded")
+
+
+@router.post(
+    "/collections/{case_id}/promises",
+    response_model=ERPActionResult,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_scope("org:collections:use"))],
+)
+async def create_promise_to_pay(
+    case_id: UUID, data: CollectionPromiseCreate, session: SessionDep, org_id: OrgIdDep, user: UserDep
+) -> ERPActionResult:
+    await mvp_service.ensure_any_operational_role(
+        session, org_id, user.id, {"ops_admin", "branch_manager", "loan_officer", "finance"}
+    )
+    item = await erp_service.create_collection_promise(
+        session,
+        org_id,
+        user.id,
+        case_id,
+        amount=data.amount,
+        promised_at=data.promised_at,
+        channel=data.channel,
+        note=data.note,
+    )
+    await session.commit()
+    return ERPActionResult(id=item.id, status=item.status, message="Promise to pay recorded")
+
+
+@router.post(
+    "/collections/{case_id}/promises/{promise_id}/resolve",
+    response_model=ERPActionResult,
+    dependencies=[Depends(require_scope("org:collections:use"))],
+)
+async def resolve_promise_to_pay(
+    case_id: UUID,
+    promise_id: UUID,
+    data: CollectionPromiseResolve,
+    session: SessionDep,
+    org_id: OrgIdDep,
+    user: UserDep,
+) -> ERPActionResult:
+    await mvp_service.ensure_any_operational_role(
+        session, org_id, user.id, {"ops_admin", "branch_manager", "loan_officer", "finance"}
+    )
+    item = await erp_service.resolve_collection_promise(
+        session, org_id, user.id, case_id, promise_id, data.status, data.reason
+    )
+    await session.commit()
+    return ERPActionResult(id=item.id, status=item.status, message="Promise resolution recorded")
 
 
 @router.get("/regulatory/templates")

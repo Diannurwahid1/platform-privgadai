@@ -146,6 +146,9 @@ Setiap perpindahan mencatat asal, tujuan, petugas menyerahkan/menerima, waktu, a
 - Queue berdasarkan DPD, bucket, exposure, risk, branch, promise-to-pay, dan strategy.
 - Case owner, next action date, contact policy, dan SLA.
 - Activity log terstruktur: kanal, pihak dihubungi, outcome, notes, evidence.
+- Implementasi tersedia: queue tenant/cabang, detail kasus, DPD dan aging, exposure, strategi, tahap, next action SLA, last contact, activity timeline, serta promise-to-pay dengan resolusi kept/broken/cancelled.
+- Broken promise otomatis menaikkan kasus ke intensive collection, mengganti strategi menjadi field visit, dan membuat tindakan lanjutan 24 jam.
+- Settlement tetap menjadi sumber kebenaran pembayaran; menandai promise `kept` tidak memposting kas atau mengurangi saldo pinjaman.
 - Promise-to-pay: jumlah, tanggal, status kept/broken, dan follow-up otomatis.
 - Restrukturisasi, settlement, atau penanganan agunan mengikuti approval matrix.
 - Complaint dan vulnerable customer flag terlihat pada queue.

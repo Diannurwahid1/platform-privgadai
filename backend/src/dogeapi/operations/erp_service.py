@@ -8,7 +8,7 @@ import io
 import json
 import secrets
 import zipfile
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
 
@@ -27,6 +27,7 @@ from dogeapi.models import (
     CashTransaction,
     CollectionCase,
     CollectionNote,
+    CollectionPromise,
     CustodyEvent,
     CustodyLocation,
     DebtorProfile,
@@ -788,9 +789,11 @@ async def financial_reports(session: AsyncSession, org_id: UUID) -> FinancialRep
 async def list_collections(session: AsyncSession, org_id: UUID) -> list[dict[str, object]]:
     rows = (
         await session.execute(
-            select(CollectionCase, LoanAccount, LoanApplication)
+            select(CollectionCase, LoanAccount, LoanApplication, Borrower, Branch)
             .join(LoanAccount, LoanAccount.id == CollectionCase.loan_account_id)
             .join(LoanApplication, LoanApplication.id == LoanAccount.application_id)
+            .join(Borrower, Borrower.id == LoanApplication.borrower_id)
+            .join(Branch, Branch.id == LoanApplication.branch_id)
             .where(
                 CollectionCase.org_id == org_id,
                 LoanAccount.org_id == org_id,
@@ -801,7 +804,7 @@ async def list_collections(session: AsyncSession, org_id: UUID) -> list[dict[str
     ).all()
     now = datetime.now(UTC)
     output: list[dict[str, object]] = []
-    for item, account, application in rows:
+    for item, account, application, borrower, branch in rows:
         days = (now - item.due_at).days
         bucket = "current" if days <= 0 else "1-30" if days <= 30 else "31-60" if days <= 60 else "60+"
         if item.status != "closed":
@@ -812,11 +815,19 @@ async def list_collections(session: AsyncSession, org_id: UUID) -> list[dict[str
                 "application_id": application.id,
                 "application_no": application.application_no,
                 "account_no": account.account_no,
+                "borrower_name": borrower.full_name,
+                "phone_masked": borrower.phone_masked,
+                "branch_code": branch.code,
+                "branch_name": branch.name,
                 "due_at": item.due_at,
                 "outstanding_amount": item.outstanding_amount,
                 "aging_bucket": item.aging_bucket,
                 "status": item.status,
+                "strategy": item.strategy,
+                "stage": item.stage,
                 "assigned_user_id": item.assigned_user_id,
+                "next_action_at": item.next_action_at,
+                "last_contact_at": item.last_contact_at,
             }
         )
     return output
@@ -838,9 +849,206 @@ async def add_collection_note(
     )
     item.next_action_at = data.next_action_at
     item.status = "follow_up"
+    item.last_contact_at = datetime.now(UTC)
     session.add(note)
     await session.flush()
     return note
+
+
+async def collection_detail(session: AsyncSession, org_id: UUID, case_id: UUID) -> dict[str, object]:
+    row = (
+        await session.execute(
+            select(CollectionCase, LoanAccount, LoanApplication, Borrower, Branch, Asset)
+            .join(LoanAccount, (LoanAccount.id == CollectionCase.loan_account_id) & (LoanAccount.org_id == org_id))
+            .join(
+                LoanApplication, (LoanApplication.id == LoanAccount.application_id) & (LoanApplication.org_id == org_id)
+            )
+            .join(Borrower, (Borrower.id == LoanApplication.borrower_id) & (Borrower.org_id == org_id))
+            .join(Branch, (Branch.id == LoanApplication.branch_id) & (Branch.org_id == org_id))
+            .join(Asset, (Asset.application_id == LoanApplication.id) & (Asset.org_id == org_id))
+            .where(CollectionCase.org_id == org_id, CollectionCase.id == case_id)
+        )
+    ).one_or_none()
+    if row is None:
+        raise _not_found("Collection case")
+    item, account, application, borrower, branch, asset = row
+    now = datetime.now(UTC)
+    days_past_due = max((now - item.due_at).days, 0)
+    notes = list(
+        await session.scalars(
+            select(CollectionNote)
+            .where(CollectionNote.org_id == org_id, CollectionNote.collection_case_id == item.id)
+            .order_by(CollectionNote.created_at.desc())
+        )
+    )
+    promises = list(
+        await session.scalars(
+            select(CollectionPromise)
+            .where(CollectionPromise.org_id == org_id, CollectionPromise.collection_case_id == item.id)
+            .order_by(CollectionPromise.created_at.desc())
+        )
+    )
+    return {
+        "id": item.id,
+        "status": item.status,
+        "strategy": item.strategy,
+        "stage": item.stage,
+        "aging_bucket": item.aging_bucket,
+        "due_at": item.due_at,
+        "days_past_due": days_past_due,
+        "outstanding_amount": item.outstanding_amount,
+        "next_action_at": item.next_action_at,
+        "last_contact_at": item.last_contact_at,
+        "assigned_user_id": item.assigned_user_id,
+        "loan": {
+            "id": account.id,
+            "account_no": account.account_no,
+            "application_id": application.id,
+            "application_no": application.application_no,
+            "status": account.status,
+            "principal_amount": account.principal_amount,
+            "outstanding_principal": account.outstanding_principal,
+            "outstanding_fee": account.outstanding_fee,
+        },
+        "borrower": {"id": borrower.id, "name": borrower.full_name, "phone_masked": borrower.phone_masked},
+        "branch": {"id": branch.id, "code": branch.code, "name": branch.name},
+        "collateral": {
+            "asset_code": asset.asset_code,
+            "category": asset.category,
+            "label": " ".join(part for part in (asset.brand, asset.model) if part) or asset.category,
+            "status": asset.collateral_status,
+            "indicative_value": asset.indicative_value,
+        },
+        "notes": [
+            {
+                "id": note.id,
+                "actor_user_id": note.actor_user_id,
+                "channel": note.channel,
+                "note": note.note,
+                "outcome": note.outcome,
+                "next_action_at": note.next_action_at,
+                "created_at": note.created_at,
+            }
+            for note in notes
+        ],
+        "promises": [
+            {
+                "id": promise.id,
+                "amount": promise.amount,
+                "promised_at": promise.promised_at,
+                "channel": promise.channel,
+                "status": promise.status,
+                "note": promise.note,
+                "resolution_reason": promise.resolution_reason,
+                "resolved_at": promise.resolved_at,
+                "is_overdue": promise.status == "pending" and promise.promised_at < now,
+                "created_at": promise.created_at,
+            }
+            for promise in promises
+        ],
+    }
+
+
+async def update_collection_plan(
+    session: AsyncSession, org_id: UUID, case_id: UUID, strategy: str, stage: str, next_action_at: datetime
+) -> CollectionCase:
+    item = await session.scalar(
+        select(CollectionCase).where(CollectionCase.org_id == org_id, CollectionCase.id == case_id).with_for_update()
+    )
+    if item is None:
+        raise _not_found("Collection case")
+    item.strategy = strategy
+    item.stage = stage
+    item.next_action_at = next_action_at
+    item.status = "resolved" if stage == "resolved" else "follow_up"
+    await session.flush()
+    return item
+
+
+async def create_collection_promise(
+    session: AsyncSession,
+    org_id: UUID,
+    actor_id: UUID,
+    case_id: UUID,
+    *,
+    amount: Decimal,
+    promised_at: datetime,
+    channel: str,
+    note: str,
+) -> CollectionPromise:
+    item = await session.scalar(
+        select(CollectionCase).where(CollectionCase.org_id == org_id, CollectionCase.id == case_id).with_for_update()
+    )
+    if item is None:
+        raise _not_found("Collection case")
+    if amount > item.outstanding_amount:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Promise amount exceeds outstanding amount")
+    if promised_at <= datetime.now(UTC):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Promise due date must be in the future")
+    existing = await session.scalar(
+        select(CollectionPromise.id).where(
+            CollectionPromise.org_id == org_id,
+            CollectionPromise.collection_case_id == case_id,
+            CollectionPromise.status == "pending",
+        )
+    )
+    if existing is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "An unresolved promise to pay already exists")
+    promise = CollectionPromise(
+        org_id=org_id,
+        collection_case_id=case_id,
+        created_by_user_id=actor_id,
+        amount=amount,
+        promised_at=promised_at,
+        channel=channel,
+        note=note,
+    )
+    item.status = "promise_to_pay"
+    item.next_action_at = promised_at
+    item.last_contact_at = datetime.now(UTC)
+    session.add(promise)
+    await session.flush()
+    return promise
+
+
+async def resolve_collection_promise(
+    session: AsyncSession,
+    org_id: UUID,
+    actor_id: UUID,
+    case_id: UUID,
+    promise_id: UUID,
+    resolution: str,
+    reason: str,
+) -> CollectionPromise:
+    promise = await session.scalar(
+        select(CollectionPromise)
+        .where(
+            CollectionPromise.org_id == org_id,
+            CollectionPromise.collection_case_id == case_id,
+            CollectionPromise.id == promise_id,
+        )
+        .with_for_update()
+    )
+    if promise is None:
+        raise _not_found("Promise to pay")
+    if promise.status != "pending":
+        raise HTTPException(status.HTTP_409_CONFLICT, "Promise to pay has already been resolved")
+    item = await session.scalar(
+        select(CollectionCase).where(CollectionCase.org_id == org_id, CollectionCase.id == case_id).with_for_update()
+    )
+    if item is None:
+        raise _not_found("Collection case")
+    promise.status = resolution
+    promise.resolution_reason = reason
+    promise.resolved_by_user_id = actor_id
+    promise.resolved_at = datetime.now(UTC)
+    item.status = "broken_promise" if resolution == "broken" else "follow_up"
+    if resolution == "broken":
+        item.stage = "intensive_collection"
+        item.strategy = "field_visit"
+        item.next_action_at = datetime.now(UTC) + timedelta(hours=24)
+    await session.flush()
+    return promise
 
 
 async def create_regulatory_template(

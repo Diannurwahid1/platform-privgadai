@@ -310,6 +310,7 @@ class CollectionCase(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "collection_cases"
     __table_args__ = (
         UniqueConstraint("loan_account_id", name="uq_collection_cases_loan"),
+        UniqueConstraint("org_id", "id", name="uq_collection_cases_org_id"),
         ForeignKeyConstraint(
             ["org_id", "loan_account_id"],
             ["loan_accounts.org_id", "loan_accounts.id"],
@@ -330,6 +331,11 @@ class CollectionCase(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     aging_bucket: Mapped[str] = mapped_column(String(24), nullable=False, default="current", server_default="current")
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="monitoring", server_default="monitoring")
     next_action_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    strategy: Mapped[str] = mapped_column(String(32), nullable=False, default="reminder", server_default="reminder")
+    stage: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="soft_collection", server_default="soft_collection"
+    )
+    last_contact_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class CollectionNote(UUIDPrimaryKeyMixin, Base):
@@ -349,6 +355,39 @@ class CollectionNote(UUIDPrimaryKeyMixin, Base):
     outcome: Mapped[str] = mapped_column(String(32), nullable=False)
     next_action_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class CollectionPromise(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "collection_promises"
+    __table_args__ = (
+        CheckConstraint("amount > 0", name="ck_collection_promise_amount_positive"),
+        ForeignKeyConstraint(
+            ["org_id", "collection_case_id"],
+            ["collection_cases.org_id", "collection_cases.id"],
+            name="fk_collection_promise_org_case",
+            ondelete="CASCADE",
+        ),
+    )
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    collection_case_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False, index=True)
+    created_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    resolved_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+    amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    promised_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    channel: Mapped[str] = mapped_column(String(24), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="pending", server_default="pending", index=True
+    )
+    note: Mapped[str] = mapped_column(Text(), nullable=False)
+    resolution_reason: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class RegulatoryReportTemplate(UUIDPrimaryKeyMixin, TimestampMixin, Base):

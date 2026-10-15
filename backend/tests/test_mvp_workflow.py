@@ -513,6 +513,51 @@ async def test_complete_mvp_workflow_is_tenant_scoped(
     collections = await client.get("/v1/collections", headers=headers)
     assert collections.status_code == 200
     assert len(collections.json()) == 1
+    collection_case_id = collections.json()[0]["id"]
+    collection_detail = await client.get(f"/v1/collections/{collection_case_id}", headers=headers)
+    assert collection_detail.status_code == 200, collection_detail.text
+    assert collection_detail.json()["borrower"]["name"] == "Nasabah Uji"
+    collection_plan = await client.patch(
+        f"/v1/collections/{collection_case_id}/plan",
+        json={
+            "strategy": "negotiation",
+            "stage": "soft_collection",
+            "next_action_at": (datetime.now(UTC) + timedelta(days=1)).isoformat(),
+        },
+        headers=headers,
+    )
+    assert collection_plan.status_code == 200, collection_plan.text
+    contact_note = await client.post(
+        f"/v1/collections/{collection_case_id}/notes",
+        json={
+            "channel": "phone",
+            "note": "Nasabah berhasil dihubungi dan menyampaikan rencana pembayaran.",
+            "outcome": "promise_to_pay",
+            "next_action_at": (datetime.now(UTC) + timedelta(days=2)).isoformat(),
+        },
+        headers=headers,
+    )
+    assert contact_note.status_code == 201, contact_note.text
+    promise = await client.post(
+        f"/v1/collections/{collection_case_id}/promises",
+        json={
+            "amount": "7350000",
+            "promised_at": (datetime.now(UTC) + timedelta(days=2)).isoformat(),
+            "channel": "phone",
+            "note": "Nasabah berjanji melunasi seluruh kewajiban setelah penerimaan usaha.",
+        },
+        headers=headers,
+    )
+    assert promise.status_code == 201, promise.text
+    broken_promise = await client.post(
+        f"/v1/collections/{collection_case_id}/promises/{promise.json()['id']}/resolve",
+        json={"status": "broken", "reason": "Dana belum tersedia pada tanggal yang disepakati"},
+        headers=headers,
+    )
+    assert broken_promise.status_code == 200, broken_promise.text
+    escalated_collection = await client.get(f"/v1/collections/{collection_case_id}", headers=headers)
+    assert escalated_collection.json()["stage"] == "intensive_collection"
+    assert escalated_collection.json()["strategy"] == "field_visit"
     settled = await client.post(
         "/v1/settlements",
         json={

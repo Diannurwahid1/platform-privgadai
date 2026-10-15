@@ -44,6 +44,24 @@ class CollectionNoteCreate(BaseModel):
     next_action_at: datetime | None = None
 
 
+class CollectionCasePlanUpdate(BaseModel):
+    strategy: str = Field(pattern="^(reminder|negotiation|field_visit|legal_review|collateral_resolution)$")
+    stage: str = Field(pattern="^(soft_collection|intensive_collection|pre_legal|legal|resolved)$")
+    next_action_at: datetime
+
+
+class CollectionPromiseCreate(BaseModel):
+    amount: Decimal = Field(gt=0)
+    promised_at: datetime
+    channel: str = Field(pattern="^(phone|whatsapp|visit|branch|email)$")
+    note: str = Field(min_length=5, max_length=2000)
+
+
+class CollectionPromiseResolve(BaseModel):
+    status: str = Field(pattern="^(kept|broken|cancelled)$")
+    reason: str = Field(min_length=5, max_length=2000)
+
+
 class RegulatoryTemplateCreate(BaseModel):
     report_type: str = Field(pattern="^(OJK|SLIK)$")
     code: str = Field(min_length=2, max_length=40)

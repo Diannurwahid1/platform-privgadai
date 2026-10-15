@@ -317,6 +317,17 @@ export type CustodyMovement = {
   id: string; movement_no: string; application_id: string; from_location_id: string; to_location_id: string;
   status: string; reason: string; seal_out: string | null; seal_in: string | null; created_at: string;
 };
+export type CollectionCaseDetail = {
+  id: string; status: string; strategy: string; stage: string; aging_bucket: string; due_at: string;
+  days_past_due: number; outstanding_amount: number; next_action_at: string | null; last_contact_at: string | null;
+  assigned_user_id: string | null;
+  loan: { id: string; account_no: string; application_id: string; application_no: string; status: string; principal_amount: number; outstanding_principal: number; outstanding_fee: number };
+  borrower: { id: string; name: string; phone_masked: string };
+  branch: { id: string; code: string; name: string };
+  collateral: { asset_code: string; category: string; label: string; status: string; indicative_value: number };
+  notes: Array<{ id: string; actor_user_id: string; channel: string; note: string; outcome: string; next_action_at: string | null; created_at: string }>;
+  promises: Array<{ id: string; amount: number; promised_at: string; channel: string; status: string; note: string; resolution_reason: string | null; resolved_at: string | null; is_overdue: boolean; created_at: string }>;
+};
 
 export const listBranches = () => apiFetch<BranchItem[]>("/v1/master/branches");
 export const listAssetCategories = () =>
@@ -412,6 +423,15 @@ export const createAccountingPeriod = (period_start: string, period_end: string)
 export const requestAccountingPeriodClose = (id: string, reason: string) =>
   apiFetch<ActionResult>(`/v1/accounting/periods/${id}/close`, { method: "POST", json: { reason } });
 export const listCollections = () => apiFetch<Array<Record<string, unknown>>>("/v1/collections");
+export const getCollectionCase = (id: string) => apiFetch<CollectionCaseDetail>(`/v1/collections/${id}`);
+export const addCollectionNote = (id: string, json: Record<string, unknown>) =>
+  apiFetch<ActionResult>(`/v1/collections/${id}/notes`, { method: "POST", json });
+export const updateCollectionPlan = (id: string, json: Record<string, unknown>) =>
+  apiFetch<ActionResult>(`/v1/collections/${id}/plan`, { method: "PATCH", json });
+export const createCollectionPromise = (id: string, json: Record<string, unknown>) =>
+  apiFetch<ActionResult>(`/v1/collections/${id}/promises`, { method: "POST", json });
+export const resolveCollectionPromise = (caseId: string, promiseId: string, status: string, reason: string) =>
+  apiFetch<ActionResult>(`/v1/collections/${caseId}/promises/${promiseId}/resolve`, { method: "POST", json: { status, reason } });
 export const listRegulatoryTemplates = () =>
   apiFetch<Array<Record<string, unknown>>>("/v1/regulatory/templates");
 export const listRegulatoryRuns = () => apiFetch<Array<Record<string, unknown>>>("/v1/regulatory/runs");
