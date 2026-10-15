@@ -18,6 +18,7 @@ Dokumen ini menjadi daftar kerja teknis aktif berdasarkan business blueprint dan
 | Accounting | COA dasar, balanced journal, drill-down, reversal approval, period close/lock | posting-rule configurator, reconciliation workbench, controlled reopen |
 | Collection | case detail, strategy/stage, SLA, notes, PTP, broken-promise escalation | contact policy versioning, evidence, legal handoff, channel integration |
 | Incident/exception | real case register, branch scope, SLA, owner, RCA/CAPA, event log, collateral hold, approval resolution, reopen | evidence case, taxonomy versioning, multi-aggregate relation, CAPA analytics |
+| Complaint/support | tiket unik, Customer 360, branch scope, owner, response/resolution SLA, komunikasi, escalation, outcome, compensation decision, approval, reopen | evidence, channel adapter, refund posting, regulator acknowledgement, taxonomy versioning |
 | Approval | append-only ledger, snapshot, separation of duty, role/branch scope, delegation, SLA escalation | managed scheduler, authority matrix by amount/product/risk |
 | Audit | business domain event explorer dan technical request audit | immutable archival, retention/legal hold, SIEM export |
 | OJK monthly | controlled snapshot, Form 1100/2100/9100 package, validation, reconciliation, checksum, sign-off | seluruh lampiran resmi, official validator test, submission acknowledgement |
@@ -29,7 +30,7 @@ Dokumen ini menjadi daftar kerja teknis aktif berdasarkan business blueprint dan
 - [ ] Lengkapi branch/role/object authorization tests pada seluruh detail, command, export, dan file.
 - [ ] Tambahkan payment allocation rule, receipt numbering, refund, waiver, adjustment, dan contra posting.
 - [ ] Bangun reconciliation workbench untuk cashbox, loan subledger, GL, dan bank statement.
-- [ ] Bangun complaint/support case dengan SLA response dan resolution, escalation, komunikasi, dan outcome.
+- [x] Bangun complaint/support case dengan SLA response dan resolution, escalation, komunikasi, outcome, dan maker-checker.
 - [ ] Bangun configuration workbench versioned/effective-dated untuk product, pricing, appraisal, workflow, accounting, custody, regulatory, dan authority matrix.
 - [ ] Tambahkan evidence attachment dan malware scan pada incident, appraisal, custody, serta KYC.
 - [ ] Terapkan MFA privileged, session inventory/revoke, step-up auth, dan security event explorer.

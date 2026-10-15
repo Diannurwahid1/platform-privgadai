@@ -12,6 +12,7 @@ import {
   HandCoins,
   LayoutDashboard,
   PackageSearch,
+  MessagesSquare,
   Scale,
   ScrollText,
   Settings,
@@ -63,6 +64,7 @@ export function buildPartnerNavigation(slug: string): PartnerNavGroup[] {
     ] },
     { id: "compliance", label: "Compliance", items: [
       { id: "exceptions", label: "Exceptions", href: `${root}/compliance/exceptions`, icon: ShieldAlert, match: "section" },
+      { id: "complaints", label: "Complaints", href: `${root}/compliance/complaints`, icon: MessagesSquare, match: "section" },
       { id: "approvals", label: "Approvals", href: `${root}/compliance/approvals`, icon: ClipboardCheck, match: "section" },
       { id: "audit", label: "Audit Event", href: `${root}/compliance/audit`, aliases: [`${root}/audit-log`], icon: ScrollText, match: "section" },
     ] },

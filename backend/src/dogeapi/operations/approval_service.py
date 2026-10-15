@@ -16,6 +16,8 @@ from dogeapi.models import (
     ApprovalRequest,
     Asset,
     CollateralEvent,
+    ComplaintCase,
+    ComplaintEvent,
     CustodyEvent,
     HumanAppraisal,
     Incident,
@@ -269,6 +271,32 @@ async def decide_approval(
                 to_status=incident.status,
                 note=reason,
                 event_metadata={"approval_id": str(item.id)},
+            )
+        )
+    elif item.aggregate_type == "complaint" and item.action == "resolve_complaint":
+        complaint = await session.scalar(
+            select(ComplaintCase)
+            .where(ComplaintCase.org_id == org_id, ComplaintCase.id == item.aggregate_id)
+            .with_for_update()
+        )
+        if complaint is None or complaint.status != "pending_resolution":
+            raise HTTPException(status.HTTP_409_CONFLICT, "Complaint tidak siap diputuskan")
+        previous_complaint_status = complaint.status
+        if decision == "approved":
+            complaint.status = "resolved"
+            complaint.resolved_by_user_id = actor_id
+            complaint.resolved_at = datetime.now(UTC)
+        else:
+            complaint.status = "investigating"
+        session.add(
+            ComplaintEvent(
+                org_id=org_id,
+                complaint_id=complaint.id,
+                actor_user_id=actor_id,
+                event_type="ComplaintResolved" if decision == "approved" else "ComplaintResolutionRejected",
+                from_status=previous_complaint_status,
+                to_status=complaint.status,
+                message=reason,
             )
         )
     session.add(

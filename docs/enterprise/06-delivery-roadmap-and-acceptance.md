@@ -90,6 +90,8 @@ Exit: transaksi uang mempunyai source event, balanced journal, receipt, dan reko
   - Incident register nyata, branch scope, owner, SLA, root cause, corrective action, event history, collateral hold, maker-checker resolution, dan reopen tersedia.
   - Evidence attachment khusus kasus, taxonomy efektif-bertanggal, multi-aggregate linking, dan CAPA analytics masih dilanjutkan.
 - [ ] F6-04: complaint/support ticket dan SLA.
+  - Intake multi-channel, tiket unik, Customer 360, branch scope, vulnerable/regulator flags, owner, response/resolution SLA, komunikasi, escalation, outcome, compensation decision, maker-checker resolution, dan reopen tersedia.
+  - Evidence, messaging/email adapter, refund posting, acknowledgement regulator, dan taxonomy effective-dated masih dilanjutkan.
 - [ ] F6-05: configuration workbench versioned/effective-dated.
 - [ ] F6-06: privileged access, MFA, session, security event.
 

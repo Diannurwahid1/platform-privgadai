@@ -20,6 +20,7 @@ from dogeapi.models import (
     CashTransaction,
     CollateralEvent,
     CollectionCase,
+    ComplaintCase,
     Consent,
     DebtorProfile,
     InventoryCheck,
@@ -157,6 +158,13 @@ async def customer_detail(customer_id: UUID, session: SessionDep, org_id: OrgIdD
                 .order_by(CollectionCase.created_at.desc())
             )
         )
+    complaint_cases = list(
+        await session.scalars(
+            select(ComplaintCase)
+            .where(ComplaintCase.org_id == org_id, ComplaintCase.borrower_id == customer_id)
+            .order_by(ComplaintCase.created_at.desc())
+        )
+    )
 
     applications = [
         {
@@ -224,6 +232,7 @@ async def customer_detail(customer_id: UUID, session: SessionDep, org_id: OrgIdD
             "collateral_count": sum(1 for item in applications if item["asset"] is not None),
             "total_outstanding": total_outstanding,
             "open_collection_count": sum(1 for case in collection_cases if case.status not in {"resolved", "closed"}),
+            "open_complaint_count": sum(1 for case in complaint_cases if case.status != "resolved"),
         },
         "applications": applications,
         "consents": [
@@ -247,6 +256,21 @@ async def customer_detail(customer_id: UUID, session: SessionDep, org_id: OrgIdD
                 "next_action_at": case.next_action_at,
             }
             for case in collection_cases
+        ],
+        "complaints": [
+            {
+                "id": case.id,
+                "ticket_no": case.ticket_no,
+                "category": case.category,
+                "priority": case.priority,
+                "status": case.status,
+                "subject": case.subject,
+                "response_due_at": case.response_due_at,
+                "resolution_due_at": case.resolution_due_at,
+                "regulator_reportable": case.regulator_reportable,
+                "created_at": case.created_at,
+            }
+            for case in complaint_cases
         ],
         "activity": [
             {

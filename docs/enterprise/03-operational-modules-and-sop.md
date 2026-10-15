@@ -192,6 +192,10 @@ Lampiran bukti khusus incident, taxonomy root-cause terversi, relasi banyak aggr
 - Intake multi-channel, nomor tiket, kategori, pelanggan/kontrak terkait.
 - SLA response/resolution, escalation, komunikasi, evidence, outcome, compensation.
 - Complaint regulator dan insiden operasional dibedakan tetapi dapat saling direlasikan.
+- Implementasi menyediakan register tenant/cabang, tiket unik, relasi Customer 360 dan pengajuan, vulnerable-customer flag, regulator-reportable flag, owner cabang, response/resolution SLA, komunikasi inbound/outbound/internal append-only, serta eskalasi dua tingkat.
+- Resolusi, outcome, dan nominal kompensasi memakai approval branch manager dengan separation of duty; penolakan mengembalikan kasus ke investigasi dan kasus resolved dapat dibuka kembali dengan reason event.
+- Nominal kompensasi saat ini adalah keputusan kasus dan belum memposting pengeluaran kas; pencairannya harus melalui payment/refund workflow setelah modul tersebut selesai.
+- Evidence attachment, kanal komunikasi provider, acknowledgement regulator, dan taxonomy complaint effective-dated masih dilanjutkan.
 
 ## 10. Settings dan master process
 

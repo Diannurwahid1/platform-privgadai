@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, BriefcaseBusiness, CalendarClock, Copy, FileCheck2, Landmark, PackageSearch, Plus, Printer, ShieldCheck, UserRound } from "lucide-react";
+import { ArrowLeft, BriefcaseBusiness, CalendarClock, Copy, FileCheck2, Landmark, MessagesSquare, PackageSearch, Plus, Printer, ShieldCheck, UserRound } from "lucide-react";
 import { ErrorState, LoadingState } from "@/components/page-state";
 import { CustomerKycWorkspace } from "@/components/customer-kyc-workspace";
 import { getCustomerDetail, type CustomerDetail } from "@/lib/operations";
@@ -20,7 +20,7 @@ export default function CustomerDetailPage() {
   const [tab, setTab] = useState("overview");
   const tabs = useMemo(() => [
     ["overview", "Ringkasan"], ["identity", "Identitas & KYC"], ["facilities", `Pengajuan & Pinjaman (${data?.applications.length ?? 0})`],
-    ["collateral", "Agunan"], ["consent", `Consent (${data?.consents.length ?? 0})`], ["activity", "Aktivitas"],
+    ["collateral", "Agunan"], ["complaints", `Complaint (${data?.complaints.length ?? 0})`], ["consent", `Consent (${data?.consents.length ?? 0})`], ["activity", "Aktivitas"],
   ], [data]);
 
   useEffect(() => {
@@ -51,6 +51,7 @@ export default function CustomerDetailPage() {
     {tab === "identity" && <Identity data={data} />}
     {tab === "facilities" && <Facilities data={data} slug={slug} />}
     {tab === "collateral" && <Collateral data={data} slug={slug} />}
+    {tab === "complaints" && <Complaints data={data} slug={slug} />}
     {tab === "consent" && <Consent data={data} />}
     {tab === "activity" && <Activity data={data} slug={slug} />}
   </div>;
@@ -58,12 +59,13 @@ export default function CustomerDetailPage() {
 
 function Overview({ data, slug }: { data: CustomerDetail; slug: string }) {
   return <>
-    <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+    <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
       <Metric label="Pengajuan" value={String(data.summary.application_count)} icon={BriefcaseBusiness} />
       <Metric label="Pinjaman aktif" value={String(data.summary.active_loan_count)} icon={Landmark} />
       <Metric label="Total outstanding" value={idr(data.summary.total_outstanding)} icon={CalendarClock} />
       <Metric label="Agunan" value={String(data.summary.collateral_count)} icon={PackageSearch} />
       <Metric label="Collection terbuka" value={String(data.summary.open_collection_count)} icon={ShieldCheck} alert={data.summary.open_collection_count > 0} />
+      <Metric label="Complaint terbuka" value={String(data.summary.open_complaint_count)} icon={MessagesSquare} alert={data.summary.open_complaint_count > 0} />
     </section>
     <section className="grid gap-4 xl:grid-cols-[1.45fr_1fr]">
       <Panel title="Fasilitas terbaru" subtitle="Pengajuan dan rekening terakhir milik debitur">
@@ -95,6 +97,10 @@ function Collateral({ data, slug }: { data: CustomerDetail; slug: string }) {
 
 function Consent({ data }: { data: CustomerDetail }) {
   return <Panel title="Consent dan dokumen" subtitle="Versi, kanal, serta waktu persetujuan"><div className="divide-y divide-border">{data.consents.map((item) => <div key={String(item.id)} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0"><span className="grid h-9 w-9 place-items-center rounded-lg bg-emerald-50 text-emerald-700"><FileCheck2 className="h-4 w-4" /></span><div className="flex-1"><p className="text-sm font-semibold">{String(item.consent_type)}</p><p className="mt-1 text-xs text-muted-foreground">Versi {String(item.document_version)} · {String(item.channel)}</p></div><time className="text-xs text-muted-foreground">{date(item.accepted_at)}</time></div>)}</div>{!data.consents.length && <Empty text="Belum ada bukti consent." />}</Panel>;
+}
+
+function Complaints({ data, slug }: { data: CustomerDetail; slug: string }) {
+  return <Panel title="Complaint nasabah" subtitle="Tiket, SLA, prioritas, dan status penyelesaian"><div className="divide-y divide-border">{data.complaints.map((item) => <Link key={String(item.id)} href={`/orgs/${slug}/compliance/complaints/${String(item.id)}`} className="grid gap-2 py-3 first:pt-0 last:pb-0 sm:grid-cols-[150px_1fr_130px] sm:items-center"><div><p className="font-mono text-xs font-bold text-primary">{String(item.ticket_no)}</p><p className="mt-1 text-[10px] uppercase text-muted-foreground">{String(item.category)}</p></div><div><p className="text-sm font-semibold">{String(item.subject)}</p><p className="mt-1 text-xs text-muted-foreground">Resolution SLA {date(item.resolution_due_at)}</p></div><Status label={String(item.status).replaceAll("_", " ")} alert={String(item.status) !== "resolved" && Boolean(item.regulator_reportable)} /></Link>)}</div>{!data.complaints.length && <Empty text="Belum ada complaint untuk nasabah ini." />}</Panel>;
 }
 
 function Activity({ data, slug }: { data: CustomerDetail; slug: string }) {

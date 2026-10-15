@@ -206,6 +206,7 @@ export type CustomerDetail = {
     collateral_count: number;
     total_outstanding: number;
     open_collection_count: number;
+    open_complaint_count: number;
   };
   applications: Array<{
     id: string;
@@ -237,6 +238,7 @@ export type CustomerDetail = {
   }>;
   consents: Array<Record<string, unknown>>;
   collections: Array<Record<string, unknown>>;
+  complaints: Array<Record<string, unknown>>;
   activity: Array<Record<string, unknown>>;
 };
 
@@ -348,6 +350,25 @@ export type IncidentDetail = {
   resolved_by_user_id: string | null; resolved_at: string | null; reopened_count: number; created_at: string;
   events: Array<{ id: string; event_type: string; actor_user_id: string | null; from_status: string | null; to_status: string | null; note: string | null; metadata: Record<string, unknown>; occurred_at: string }>;
 };
+export type ComplaintListItem = {
+  id: string; ticket_no: string; borrower_id: string; borrower_name: string; branch_id: string; branch_code: string;
+  category: string; channel: string; priority: string; status: string; subject: string;
+  assigned_to_name: string | null; response_due_at: string; resolution_due_at: string;
+  response_overdue: boolean; resolution_overdue: boolean; vulnerable_customer: boolean;
+  regulator_reportable: boolean; escalation_level: number; created_at: string;
+};
+export type ComplaintDetail = {
+  id: string; ticket_no: string; borrower: { id: string; name: string };
+  branch: { id: string; code: string; name: string }; application_id: string | null;
+  reported_by_user_id: string; assigned_to_user_id: string | null; category: string; channel: string;
+  priority: string; status: string; subject: string; description: string; vulnerable_customer: boolean;
+  regulator_reportable: boolean; response_due_at: string; resolution_due_at: string;
+  acknowledged_at: string | null; resolution_summary: string | null; outcome: string | null;
+  compensation_amount: number; resolved_by_user_id: string | null; resolved_at: string | null;
+  escalation_level: number; reopened_count: number; created_at: string;
+  events: Array<{ id: string; event_type: string; actor_user_id: string | null; direction: string | null;
+    channel: string | null; from_status: string | null; to_status: string | null; message: string | null; occurred_at: string }>;
+};
 
 export const listBranches = () => apiFetch<BranchItem[]>("/v1/master/branches");
 export const listAssetCategories = () =>
@@ -455,6 +476,20 @@ export const requestIncidentResolution = (id: string, resolution_note: string) =
   apiFetch<{ id: string; status: string; message: string }>(`/v1/incidents/${id}/resolution`, { method: "POST", json: { resolution_note } });
 export const reopenIncident = (id: string, reason: string) =>
   apiFetch<{ id: string; status: string; message: string }>(`/v1/incidents/${id}/reopen`, { method: "POST", json: { reason } });
+export const listComplaints = () => apiFetch<ComplaintListItem[]>("/v1/complaints");
+export const getComplaint = (id: string) => apiFetch<ComplaintDetail>(`/v1/complaints/${id}`);
+export const createComplaint = (json: Record<string, unknown>) =>
+  apiFetch<{ id: string; status: string; message: string; ticket_no: string }>("/v1/complaints", { method: "POST", json });
+export const assignComplaint = (id: string, assigned_to_user_id: string, reason: string) =>
+  apiFetch<{ id: string; status: string; message: string }>(`/v1/complaints/${id}/assign`, { method: "POST", json: { assigned_to_user_id, reason } });
+export const addComplaintCommunication = (id: string, json: Record<string, unknown>) =>
+  apiFetch<{ id: string; status: string; message: string }>(`/v1/complaints/${id}/communications`, { method: "POST", json });
+export const requestComplaintResolution = (id: string, json: Record<string, unknown>) =>
+  apiFetch<{ id: string; status: string; message: string }>(`/v1/complaints/${id}/resolution`, { method: "POST", json });
+export const reopenComplaint = (id: string, reason: string) =>
+  apiFetch<{ id: string; status: string; message: string }>(`/v1/complaints/${id}/reopen`, { method: "POST", json: { reason } });
+export const escalateComplaintSla = () =>
+  apiFetch<{ count: number; message: string }>("/v1/complaints/escalate-overdue", { method: "POST" });
 export const getCollectionCase = (id: string) => apiFetch<CollectionCaseDetail>(`/v1/collections/${id}`);
 export const addCollectionNote = (id: string, json: Record<string, unknown>) =>
   apiFetch<ActionResult>(`/v1/collections/${id}/notes`, { method: "POST", json });
