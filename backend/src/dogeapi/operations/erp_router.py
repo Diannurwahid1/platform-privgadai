@@ -929,7 +929,7 @@ async def inventory_checks(session: SessionDep, org_id: OrgIdDep, user: UserDep)
                         select(func.count(InventoryCheckItem.id)).where(
                             InventoryCheckItem.org_id == org_id,
                             InventoryCheckItem.inventory_check_id == item.id,
-                            InventoryCheckItem.result == "variance",
+                            InventoryCheckItem.result.in_({"variance", "variance_confirmed"}),
                         )
                     )
                 )
@@ -985,6 +985,26 @@ async def submit_inventory_check(
     item = await erp_service.submit_inventory_check(session, org_id, user.id, check_id, data)
     await session.commit()
     return ERPActionResult(id=item.id, status=item.status, message="Stock opname submitted for review")
+
+
+@router.post(
+    "/inventory-checks/{check_id}/recount",
+    response_model=ERPActionResult,
+    dependencies=[Depends(require_scope("org:inventory:use"))],
+)
+async def recount_inventory_check(
+    check_id: UUID,
+    data: InventoryCheckSubmit,
+    session: SessionDep,
+    org_id: OrgIdDep,
+    user: UserDep,
+) -> ERPActionResult:
+    await mvp_service.ensure_any_operational_role(
+        session, org_id, user.id, {"ops_admin", "branch_manager", "custodian"}
+    )
+    item = await erp_service.recount_inventory_check(session, org_id, user.id, check_id, data)
+    await session.commit()
+    return ERPActionResult(id=item.id, status=item.status, message="Independent recount submitted for review")
 
 
 @router.post(

@@ -1560,6 +1560,36 @@ async def create_inventory_check(
     item = InventoryCheck(org_id=org_id, location_id=location_id, performed_by_user_id=actor_id)
     session.add(item)
     await session.flush()
+    candidates = (
+        await session.execute(
+            select(Asset, LoanApplication)
+            .join(
+                LoanApplication,
+                (LoanApplication.id == Asset.application_id) & (LoanApplication.org_id == org_id),
+            )
+            .where(
+                Asset.org_id == org_id,
+                Asset.collateral_status.in_({"stored", "incident_hold", "release_authorized"}),
+            )
+        )
+    ).all()
+    for asset, application in candidates:
+        last_location = await session.scalar(
+            select(CustodyEvent.location_id)
+            .where(CustodyEvent.org_id == org_id, CustodyEvent.application_id == application.id)
+            .order_by(CustodyEvent.occurred_at.desc())
+            .limit(1)
+        )
+        if last_location == location_id:
+            session.add(
+                InventoryCheckItem(
+                    org_id=org_id,
+                    inventory_check_id=item.id,
+                    application_id=application.id,
+                    expected_status=asset.collateral_status,
+                )
+            )
+    await session.flush()
     return item
 
 
@@ -1575,50 +1605,38 @@ async def inventory_check_detail(session: AsyncSession, org_id: UUID, check_id: 
             CustodyLocation.id == item.location_id,
         )
     )
-    observations = {
-        row.application_id: row
-        for row in await session.scalars(
-            select(InventoryCheckItem).where(
-                InventoryCheckItem.org_id == org_id,
-                InventoryCheckItem.inventory_check_id == item.id,
-            )
-        )
-    }
-    candidates = (
+    rows = (
         await session.execute(
-            select(Asset, LoanApplication)
+            select(InventoryCheckItem, Asset, LoanApplication)
+            .join(
+                Asset,
+                (Asset.application_id == InventoryCheckItem.application_id) & (Asset.org_id == org_id),
+            )
             .join(
                 LoanApplication,
                 (LoanApplication.id == Asset.application_id) & (LoanApplication.org_id == org_id),
             )
             .where(
-                Asset.org_id == org_id,
-                Asset.collateral_status.in_({"stored", "incident_hold", "release_authorized"}),
+                InventoryCheckItem.org_id == org_id,
+                InventoryCheckItem.inventory_check_id == item.id,
             )
             .order_by(LoanApplication.application_no)
         )
     ).all()
     assets: list[dict[str, object]] = []
-    for asset, application in candidates:
-        last_location = await session.scalar(
-            select(CustodyEvent.location_id)
-            .where(CustodyEvent.org_id == org_id, CustodyEvent.application_id == application.id)
-            .order_by(CustodyEvent.occurred_at.desc())
-            .limit(1)
-        )
-        if last_location != item.location_id:
-            continue
-        observation = observations.get(application.id)
+    for observation, asset, application in rows:
         assets.append(
             {
                 "application_id": application.id,
                 "application_no": application.application_no,
                 "asset_code": asset.asset_code,
                 "asset_label": " ".join(value for value in (asset.brand, asset.model) if value) or asset.category,
-                "expected_status": asset.collateral_status,
-                "observed_status": observation.observed_status if observation else None,
-                "result": observation.result if observation else None,
-                "note": observation.note if observation else None,
+                "expected_status": None if item.status == "draft" else observation.expected_status,
+                "observed_status": observation.observed_status,
+                "result": observation.result,
+                "note": observation.note,
+                "recount_observed_status": observation.recount_observed_status,
+                "recount_note": observation.recount_note,
             }
         )
     return {
@@ -1631,7 +1649,9 @@ async def inventory_check_detail(session: AsyncSession, org_id: UUID, check_id: 
         "status": item.status,
         "performed_by_user_id": item.performed_by_user_id,
         "reviewed_by_user_id": item.reviewed_by_user_id,
+        "recounted_by_user_id": item.recounted_by_user_id,
         "counted_at": item.counted_at,
+        "recounted_at": item.recounted_at,
         "approved_at": item.approved_at,
         "assets": assets,
     }
@@ -1647,24 +1667,25 @@ async def submit_inventory_check(
         raise _not_found("Inventory check")
     if item.status != "draft":
         raise HTTPException(status.HTTP_409_CONFLICT, "Inventory check is not editable")
-    for observation in data.observations:
-        asset = await session.scalar(
-            select(Asset).where(Asset.org_id == org_id, Asset.application_id == observation.application_id)
-        )
-        if asset is None:
-            raise _not_found("Collateral asset")
-        session.add(
-            InventoryCheckItem(
-                org_id=org_id,
-                inventory_check_id=item.id,
-                application_id=observation.application_id,
-                expected_status=asset.collateral_status,
-                observed_status=observation.observed_status,
-                result="matched" if asset.collateral_status == observation.observed_status else "variance",
-                note=observation.note,
+    if item.performed_by_user_id != actor_id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Hanya petugas penghitung yang dapat mengirim first count")
+    snapshot_rows = list(
+        await session.scalars(
+            select(InventoryCheckItem).where(
+                InventoryCheckItem.org_id == org_id,
+                InventoryCheckItem.inventory_check_id == item.id,
             )
         )
-    item.status = "submitted"
+    )
+    snapshot = {row.application_id: row for row in snapshot_rows}
+    submitted_ids = {row.application_id for row in data.observations}
+    if submitted_ids != set(snapshot):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Semua item snapshot wajib dihitung tepat satu kali")
+    for observation in data.observations:
+        row = snapshot[observation.application_id]
+        row.observed_status = observation.observed_status
+        row.result = "matched" if observation.observed_status == "present" else "variance"
+        row.note = observation.note
     await session.flush()
     location = await session.scalar(
         select(CustodyLocation).where(
@@ -1686,12 +1707,72 @@ async def submit_inventory_check(
         )
         or 0
     )
+    if variance_count:
+        item.status = "recount_required"
+        await session.flush()
+        return item
+    item.status = "submitted"
+    await _request_inventory_approval(session, item, actor_id, location.branch_id, len(snapshot_rows), 0)
+    return item
+
+
+async def recount_inventory_check(
+    session: AsyncSession, org_id: UUID, actor_id: UUID, check_id: UUID, data: InventoryCheckSubmit
+) -> InventoryCheck:
+    item = await session.scalar(
+        select(InventoryCheck).where(InventoryCheck.org_id == org_id, InventoryCheck.id == check_id).with_for_update()
+    )
+    if item is None:
+        raise _not_found("Inventory check")
+    if item.status != "recount_required":
+        raise HTTPException(status.HTTP_409_CONFLICT, "Inventory check tidak menunggu recount")
+    if item.performed_by_user_id == actor_id:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Petugas first count tidak boleh melakukan recount")
+    variance_rows = list(
+        await session.scalars(
+            select(InventoryCheckItem).where(
+                InventoryCheckItem.org_id == org_id,
+                InventoryCheckItem.inventory_check_id == item.id,
+                InventoryCheckItem.result == "variance",
+            )
+        )
+    )
+    variance = {row.application_id: row for row in variance_rows}
+    if {row.application_id for row in data.observations} != set(variance):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Recount wajib mencakup seluruh item variance")
+    for observation in data.observations:
+        row = variance[observation.application_id]
+        row.recount_observed_status = observation.observed_status
+        row.recount_note = observation.note
+        row.result = "matched_on_recount" if observation.observed_status == "present" else "variance_confirmed"
+    item.recounted_by_user_id = actor_id
+    item.recounted_at = datetime.now(UTC)
+    item.status = "submitted"
+    location = await session.scalar(
+        select(CustodyLocation).where(CustodyLocation.org_id == org_id, CustodyLocation.id == item.location_id)
+    )
+    if location is None:
+        raise _not_found("Custody location")
+    confirmed = sum(1 for row in variance_rows if row.result == "variance_confirmed")
+    await _request_inventory_approval(session, item, actor_id, location.branch_id, len(variance_rows), confirmed)
+    await session.flush()
+    return item
+
+
+async def _request_inventory_approval(
+    session: AsyncSession,
+    item: InventoryCheck,
+    actor_id: UUID,
+    branch_id: UUID,
+    observation_count: int,
+    variance_count: int,
+) -> None:
     from dogeapi.operations import approval_service
 
     await approval_service.request_approval(
         session,
-        org_id=org_id,
-        branch_id=location.branch_id,
+        org_id=item.org_id,
+        branch_id=branch_id,
         aggregate_type="inventory_check",
         aggregate_id=item.id,
         aggregate_reference=f"STOCK-{str(item.id)[:8].upper()}",
@@ -1701,13 +1782,13 @@ async def submit_inventory_check(
         reason="Hasil stock opname menunggu review independen",
         payload={
             "location_id": str(item.location_id),
-            "observation_count": len(data.observations),
+            "observation_count": observation_count,
             "variance_count": variance_count,
+            "recounted_by_user_id": str(item.recounted_by_user_id) if item.recounted_by_user_id else None,
         },
         priority="high" if variance_count else "normal",
         sla_hours=4,
     )
-    return item
 
 
 async def approve_inventory_check(

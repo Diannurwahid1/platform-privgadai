@@ -122,6 +122,9 @@ Setiap perpindahan mencatat asal, tujuan, petugas menyerahkan/menerima, waktu, a
 - Blind count dan recount oleh petugas berbeda.
 - Klasifikasi selisih: missing, unexpected, wrong location, damaged, tag mismatch.
 - Investigation case, root cause, evidence, approval resolution, dan adjustment event.
+- Register custody di-snapshot saat sesi dibuat dan status expected disembunyikan selama first count. Hasil fisik memakai klasifikasi `present`, `missing`, `wrong_location`, `damaged`, atau `seal_broken`.
+- First count dengan selisih masuk `recount_required`; recount harus dilakukan user berbeda, hanya mencakup item variance, dan baru sesudahnya dikirim ke approval branch manager.
+- Satu lokasi tidak dapat memiliki dua sesi aktif bersamaan sehingga cutoff snapshot dan ownership sesi tetap tegas.
 
 ## 6. Teller, kas, dan pembayaran
 

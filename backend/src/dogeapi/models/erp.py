@@ -465,6 +465,12 @@ class InventoryCheck(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             ondelete="RESTRICT",
         ),
         UniqueConstraint("org_id", "id", name="uq_inventory_checks_org_id"),
+        Index(
+            "uq_inventory_active_location",
+            "location_id",
+            unique=True,
+            postgresql_where=text("status IN ('draft', 'recount_required', 'submitted')"),
+        ),
     )
 
     org_id: Mapped[uuid.UUID] = mapped_column(
@@ -477,8 +483,12 @@ class InventoryCheck(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     reviewed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
     )
+    recounted_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="draft", server_default="draft")
     counted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    recounted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
@@ -506,6 +516,8 @@ class InventoryCheckItem(UUIDPrimaryKeyMixin, Base):
     inventory_check_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False, index=True)
     application_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False, index=True)
     expected_status: Mapped[str] = mapped_column(String(32), nullable=False)
-    observed_status: Mapped[str] = mapped_column(String(32), nullable=False)
-    result: Mapped[str] = mapped_column(String(24), nullable=False)
+    observed_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    result: Mapped[str | None] = mapped_column(String(24), nullable=True)
     note: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    recount_observed_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    recount_note: Mapped[str | None] = mapped_column(Text(), nullable=True)

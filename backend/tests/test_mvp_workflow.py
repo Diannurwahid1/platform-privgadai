@@ -23,7 +23,8 @@ from dogeapi.models import (
     Role,
     User,
 )
-from dogeapi.operations import approval_service, mvp_service
+from dogeapi.operations import approval_service, erp_service, mvp_service
+from dogeapi.operations.erp_schemas import InventoryCheckSubmit, InventoryObservation
 from dogeapi.operations.kyc_service import encrypt_pii
 from dogeapi.operations.state_machine import APPLICATION_TRANSITIONS, COLLATERAL_TRANSITIONS, can_transition
 from dogeapi.settings import Settings
@@ -318,7 +319,7 @@ async def test_complete_mvp_workflow_is_tenant_scoped(
     stock_submit = await client.post(
         f"/v1/inventory-checks/{stock_check.json()['id']}/submit",
         json={
-            "observations": [{"application_id": application_id, "observed_status": "stored", "note": "Seal matched"}]
+            "observations": [{"application_id": application_id, "observed_status": "present", "note": "Seal matched"}]
         },
         headers=headers,
     )
@@ -338,6 +339,85 @@ async def test_complete_mvp_workflow_is_tenant_scoped(
         checker.id,
         "approved",
         "Hasil scan fisik dan seal sesuai register",
+    )
+    blind_check = await client.post(
+        "/v1/inventory-checks",
+        json={"location_id": location.json()["id"]},
+        headers=headers,
+    )
+    assert blind_check.status_code == 201, blind_check.text
+    blind_detail = await client.get(f"/v1/inventory-checks/{blind_check.json()['id']}", headers=headers)
+    assert blind_detail.status_code == 200
+    assert blind_detail.json()["assets"][0]["expected_status"] is None
+    first_count = await client.post(
+        f"/v1/inventory-checks/{blind_check.json()['id']}/submit",
+        json={
+            "observations": [
+                {
+                    "application_id": application_id,
+                    "observed_status": "missing",
+                    "note": "Tag tidak ditemukan pada first count blind",
+                }
+            ]
+        },
+        headers=headers,
+    )
+    assert first_count.status_code == 200
+    assert first_count.json()["status"] == "recount_required"
+    with pytest.raises(HTTPException) as same_counter:
+        await erp_service.recount_inventory_check(
+            db_session,
+            application.org_id,
+            actor.id,
+            blind_check.json()["id"],
+            InventoryCheckSubmit(
+                observations=[
+                    InventoryObservation(
+                        application_id=application_id,
+                        observed_status="present",
+                        note="Item ditemukan pada rak sekunder",
+                    )
+                ]
+            ),
+        )
+    assert same_counter.value.status_code == 409
+    recounted = await erp_service.recount_inventory_check(
+        db_session,
+        application.org_id,
+        checker.id,
+        blind_check.json()["id"],
+        InventoryCheckSubmit(
+            observations=[
+                InventoryObservation(
+                    application_id=application_id,
+                    observed_status="present",
+                    note="Item ditemukan pada rak sekunder dan tag diverifikasi",
+                )
+            ]
+        ),
+    )
+    assert recounted.status == "submitted"
+    assert recounted.recounted_by_user_id == checker.id
+    recount_approval = await db_session.scalar(
+        select(ApprovalRequest).where(
+            ApprovalRequest.org_id == application.org_id,
+            ApprovalRequest.aggregate_type == "inventory_check",
+            ApprovalRequest.aggregate_id == recounted.id,
+        )
+    )
+    assert recount_approval is not None and recount_approval.requested_by_user_id == checker.id
+    inventory_reviewer = User(email="inventory-reviewer@example.com", full_name="Inventory Reviewer")
+    db_session.add(inventory_reviewer)
+    await db_session.flush()
+    db_session.add(Membership(user_id=inventory_reviewer.id, org_id=application.org_id, role=Role.ADMIN))
+    await db_session.flush()
+    await approval_service.decide_approval(
+        db_session,
+        application.org_id,
+        recount_approval.id,
+        inventory_reviewer.id,
+        "approved",
+        "Recount independen dan lokasi sekunder telah diverifikasi",
     )
     movement = await client.post(
         "/v1/custody/movements",

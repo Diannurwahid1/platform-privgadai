@@ -57,7 +57,8 @@ Exit: happy path dan negative path tervalidasi end-to-end tanpa perubahan status
 - [ ] F4-03: custody receive/QC/store/move/release.
   - Receive/store/release dan mutasi vault dua tahap tersedia; mutasi menyimpan asal, tujuan, seal keluar/masuk, dispatch, receiver berbeda, timestamp, dan event passport.
 - [ ] F4-04: stock opname blind count/recount/discrepancy.
-  - Workbench register per vault, observasi per agunan, variance, penguncian submit, dan checker sudah tersedia; blind assignment serta recount terpisah masih dilanjutkan.
+  - Snapshot register per vault, first count blind, klasifikasi observasi fisik, variance, penguncian sesi per lokasi, recount oleh petugas berbeda, dan approval branch manager sudah tersedia.
+  - Assignment acak, evidence per variance, investigation otomatis untuk confirmed variance, dan cycle-count scheduler masih dilanjutkan.
 - [ ] F4-05: chain-of-custody event dan reconciliation.
 
 Exit: lokasi dan status setiap agunan dapat direkonstruksi; selisih tidak dapat ditutup tanpa bukti dan approval.

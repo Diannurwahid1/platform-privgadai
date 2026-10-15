@@ -290,17 +290,21 @@ export type InventoryCheckDetail = {
   status: string;
   performed_by_user_id: string;
   reviewed_by_user_id: string | null;
+  recounted_by_user_id: string | null;
   counted_at: string;
+  recounted_at: string | null;
   approved_at: string | null;
   assets: Array<{
     application_id: string;
     application_no: string;
     asset_code: string;
     asset_label: string;
-    expected_status: string;
+    expected_status: string | null;
     observed_status: string | null;
     result: string | null;
     note: string | null;
+    recount_observed_status: string | null;
+    recount_note: string | null;
   }>;
 };
 export type JournalItem = {
@@ -506,6 +510,11 @@ export const getInventoryCheck = (id: string) =>
   apiFetch<InventoryCheckDetail>(`/v1/inventory-checks/${id}`);
 export const submitInventoryCheck = (id: string, observations: Array<Record<string, unknown>>) =>
   apiFetch<ActionResult>(`/v1/inventory-checks/${id}/submit`, {
+    method: "POST",
+    json: { observations },
+  });
+export const recountInventoryCheck = (id: string, observations: Array<Record<string, unknown>>) =>
+  apiFetch<ActionResult>(`/v1/inventory-checks/${id}/recount`, {
     method: "POST",
     json: { observations },
   });

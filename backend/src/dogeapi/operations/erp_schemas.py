@@ -85,7 +85,7 @@ class InventoryCheckCreate(BaseModel):
 
 class InventoryObservation(BaseModel):
     application_id: UUID
-    observed_status: str = Field(min_length=2, max_length=32)
+    observed_status: str = Field(pattern="^(present|missing|seal_broken|damaged|wrong_location)$")
     note: str | None = Field(default=None, max_length=2000)
 
 
