@@ -405,10 +405,10 @@ export const listTellerSessions = () =>
   apiFetch<Array<Record<string, unknown>>>("/v1/finance/teller-sessions");
 export const openTellerSession = (cashbox_id: string) =>
   apiFetch<ActionResult>("/v1/finance/teller-sessions", { method: "POST", json: { cashbox_id } });
-export const closeTellerSession = (sessionId: string, actual_closing_balance: number) =>
+export const closeTellerSession = (sessionId: string, actual_closing_balance: number, variance_reason?: string) =>
   apiFetch<ActionResult>(`/v1/finance/teller-sessions/${sessionId}/close`, {
     method: "POST",
-    json: { actual_closing_balance },
+    json: { actual_closing_balance, variance_reason },
   });
 export const getFinancialReports = () => apiFetch<FinancialReports>("/v1/accounting/reports");
 export const listJournals = () => apiFetch<JournalItem[]>("/v1/accounting/journals");

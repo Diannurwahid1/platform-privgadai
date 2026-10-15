@@ -209,7 +209,8 @@ async def request_accounting_period_close(
         (
             await session.scalar(
                 select(func.count(TellerSession.id)).where(
-                    TellerSession.org_id == org_id, TellerSession.status == "open"
+                    TellerSession.org_id == org_id,
+                    TellerSession.status.in_({"open", "variance_pending"}),
                 )
             )
         )
@@ -616,7 +617,9 @@ async def post_repayment(
 
 
 async def open_teller_session(session: AsyncSession, org_id: UUID, user_id: UUID, cashbox_id: UUID) -> TellerSession:
-    cashbox = await session.scalar(select(Cashbox).where(Cashbox.org_id == org_id, Cashbox.id == cashbox_id))
+    cashbox = await session.scalar(
+        select(Cashbox).where(Cashbox.org_id == org_id, Cashbox.id == cashbox_id).with_for_update()
+    )
     if cashbox is None:
         raise _not_found("Cashbox")
     existing = await session.scalar(
@@ -628,6 +631,15 @@ async def open_teller_session(session: AsyncSession, org_id: UUID, user_id: UUID
     )
     if existing is not None:
         return existing
+    occupied = await session.scalar(
+        select(TellerSession).where(
+            TellerSession.org_id == org_id,
+            TellerSession.cashbox_id == cashbox_id,
+            TellerSession.status == "open",
+        )
+    )
+    if occupied is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Cashbox sedang digunakan oleh teller lain")
     item = TellerSession(
         org_id=org_id,
         cashbox_id=cashbox.id,
@@ -640,20 +652,59 @@ async def open_teller_session(session: AsyncSession, org_id: UUID, user_id: UUID
 
 
 async def close_teller_session(
-    session: AsyncSession, org_id: UUID, user_id: UUID, session_id: UUID, actual_balance: Decimal
+    session: AsyncSession,
+    org_id: UUID,
+    user_id: UUID,
+    session_id: UUID,
+    actual_balance: Decimal,
+    variance_reason: str | None,
 ) -> TellerSession:
     item = await session.scalar(
-        select(TellerSession).where(TellerSession.org_id == org_id, TellerSession.id == session_id)
+        select(TellerSession).where(TellerSession.org_id == org_id, TellerSession.id == session_id).with_for_update()
     )
     if item is None:
         raise _not_found("Teller session")
     if item.teller_user_id != user_id or item.status != "open":
         raise HTTPException(status.HTTP_409_CONFLICT, "Teller session cannot be closed by this user")
-    cashbox = await session.scalar(select(Cashbox).where(Cashbox.org_id == org_id, Cashbox.id == item.cashbox_id))
+    cashbox = await session.scalar(
+        select(Cashbox).where(Cashbox.org_id == org_id, Cashbox.id == item.cashbox_id).with_for_update()
+    )
     item.expected_closing_balance = cashbox.balance if cashbox else Decimal("0")
     item.actual_closing_balance = actual_balance
-    item.status = "closed" if actual_balance == item.expected_closing_balance else "variance"
+    item.variance_amount = actual_balance - item.expected_closing_balance
     item.closed_at = datetime.now(UTC)
+    if item.variance_amount == 0:
+        item.status = "closed"
+        item.variance_reason = None
+    else:
+        reason = (variance_reason or "").strip()
+        if len(reason) < 5:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Alasan selisih kas wajib diisi")
+        item.status = "variance_pending"
+        item.variance_reason = reason
+        from dogeapi.operations import approval_service
+
+        await approval_service.request_approval(
+            session,
+            org_id=org_id,
+            branch_id=cashbox.branch_id if cashbox else None,
+            aggregate_type="teller_session",
+            aggregate_id=item.id,
+            aggregate_reference=f"TELLER-{str(item.id)[:8].upper()}",
+            action="approve_teller_variance",
+            requested_by=user_id,
+            assigned_role="branch_manager",
+            reason=reason,
+            payload={
+                "cashbox_id": str(item.cashbox_id),
+                "opening_balance": str(item.opening_balance),
+                "expected_closing_balance": str(item.expected_closing_balance),
+                "actual_closing_balance": str(actual_balance),
+                "variance_amount": str(item.variance_amount),
+            },
+            priority="high",
+            sla_hours=2,
+        )
     await session.flush()
     return item
 

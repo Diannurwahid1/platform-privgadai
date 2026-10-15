@@ -14,11 +14,13 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
+    Index,
     Numeric,
     String,
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -241,6 +243,12 @@ class Cashbox(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 class TellerSession(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "teller_sessions"
     __table_args__ = (
+        Index(
+            "uq_teller_open_cashbox",
+            "cashbox_id",
+            unique=True,
+            postgresql_where=text("status = 'open'"),
+        ),
         ForeignKeyConstraint(
             ["org_id", "cashbox_id"],
             ["cashboxes.org_id", "cashboxes.id"],
@@ -260,6 +268,12 @@ class TellerSession(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     opening_balance: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     expected_closing_balance: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
     actual_closing_balance: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
+    variance_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
+    variance_reason: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    variance_approved_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+    variance_approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

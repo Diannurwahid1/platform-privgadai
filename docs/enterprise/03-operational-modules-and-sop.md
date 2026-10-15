@@ -132,6 +132,9 @@ Setiap perpindahan mencatat asal, tujuan, petugas menyerahkan/menerima, waktu, a
 - Limit teller/cashbox, dual control untuk nominal tertentu.
 - Cash count, expected vs actual, denomination breakdown, variance case.
 - Close session dan supervisor sign-off.
+- Implementasi saat ini mengunci satu sesi aktif per cashbox, mengambil saldo buku saat close, mewajibkan alasan untuk selisih, dan mengirim selisih ke approval branch manager dengan separation of duty.
+- Penolakan supervisor membuka kembali sesi untuk recount; persetujuan menyimpan approver dan waktu keputusan pada sesi serta approval event ledger.
+- Denomination breakdown, lampiran berita acara, batas toleransi bertingkat, dan serah-terima shift masih menjadi pekerjaan lanjutan sebelum go-live.
 
 ### Pembayaran
 

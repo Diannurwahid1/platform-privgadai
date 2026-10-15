@@ -23,6 +23,7 @@ from dogeapi.models import (
     RegulatoryReportRun,
     RegulatoryReportTemplate,
     StaffAssignment,
+    TellerSession,
     User,
 )
 
@@ -192,6 +193,25 @@ async def decide_approval(
             period.closed_at = datetime.now(UTC)
         else:
             period.status = "open"
+    elif item.aggregate_type == "teller_session" and item.action == "approve_teller_variance":
+        teller_session = await session.scalar(
+            select(TellerSession)
+            .where(TellerSession.org_id == org_id, TellerSession.id == item.aggregate_id)
+            .with_for_update()
+        )
+        if teller_session is None or teller_session.status != "variance_pending":
+            raise HTTPException(status.HTTP_409_CONFLICT, "Selisih kas teller tidak siap diputuskan")
+        if decision == "approved":
+            teller_session.status = "closed_with_variance"
+            teller_session.variance_approved_by_user_id = actor_id
+            teller_session.variance_approved_at = datetime.now(UTC)
+        else:
+            teller_session.status = "open"
+            teller_session.expected_closing_balance = None
+            teller_session.actual_closing_balance = None
+            teller_session.variance_amount = None
+            teller_session.variance_reason = None
+            teller_session.closed_at = None
     session.add(
         ApprovalEvent(
             org_id=org_id,

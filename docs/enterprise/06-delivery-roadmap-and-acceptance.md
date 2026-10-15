@@ -65,6 +65,8 @@ Exit: lokasi dan status setiap agunan dapat direkonstruksi; selisih tidak dapat 
 ## Fase 5 — Finance, accounting, dan collection (P0/P1)
 
 - [ ] F5-01: teller/cashbox open, transaction, count, variance, close.
+  - Open/close, eksklusivitas satu sesi aktif per cashbox, cash count expected-versus-actual, alasan selisih, riwayat 50 sesi, serta approval independen branch manager sudah tersedia.
+  - Denomination breakdown, tolerance matrix, bukti berita acara, cash transfer antar-teller, dan end-of-day branch reconciliation masih dilanjutkan.
 - [ ] F5-02: payment allocation, receipt, reversal, refund.
 - [ ] F5-03: COA, posting rules, journal, period lock.
   - COA dasar, jurnal berimbang, register dan drill-down jurnal, reversal via approval, serta accounting period lock tersedia; posting rule configurator dan reopen terkontrol masih dilanjutkan.

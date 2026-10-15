@@ -21,6 +21,7 @@ class TellerSessionOpen(BaseModel):
 
 class TellerSessionClose(BaseModel):
     actual_closing_balance: Decimal = Field(ge=0)
+    variance_reason: str | None = Field(default=None, min_length=5, max_length=1000)
 
 
 class JournalReverseInput(BaseModel):

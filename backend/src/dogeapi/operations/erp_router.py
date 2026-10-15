@@ -509,7 +509,14 @@ async def close_teller_session(
     user: UserDep,
 ) -> ERPActionResult:
     await mvp_service.ensure_any_operational_role(session, org_id, user.id, {"ops_admin", "finance"})
-    item = await erp_service.close_teller_session(session, org_id, user.id, session_id, data.actual_closing_balance)
+    item = await erp_service.close_teller_session(
+        session,
+        org_id,
+        user.id,
+        session_id,
+        data.actual_closing_balance,
+        data.variance_reason,
+    )
     await session.commit()
     return ERPActionResult(id=item.id, status=item.status, message="Teller session closed and reconciled")
 
@@ -534,6 +541,10 @@ async def teller_sessions(session: SessionDep, org_id: OrgIdDep, user: UserDep) 
             "opening_balance": item.opening_balance,
             "expected_closing_balance": item.expected_closing_balance,
             "actual_closing_balance": item.actual_closing_balance,
+            "variance_amount": item.variance_amount,
+            "variance_reason": item.variance_reason,
+            "variance_approved_by_user_id": item.variance_approved_by_user_id,
+            "variance_approved_at": item.variance_approved_at,
             "opened_at": item.opened_at,
             "closed_at": item.closed_at,
         }
