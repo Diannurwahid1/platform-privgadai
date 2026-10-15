@@ -272,6 +272,9 @@ async def test_complete_mvp_workflow_is_tenant_scoped(client: AsyncClient, db_se
         headers=headers,
     )
     assert stock_check.status_code == 201, stock_check.text
+    stock_detail = await client.get(f"/v1/inventory-checks/{stock_check.json()['id']}", headers=headers)
+    assert stock_detail.status_code == 200, stock_detail.text
+    assert stock_detail.json()["assets"][0]["application_id"] == application_id
     stock_submit = await client.post(
         f"/v1/inventory-checks/{stock_check.json()['id']}/submit",
         json={

@@ -20,6 +20,7 @@ from dogeapi.models import (
     CashTransaction,
     CollectionCase,
     CollectionNote,
+    CustodyEvent,
     CustodyLocation,
     GLAccount,
     InventoryCheck,
@@ -806,6 +807,80 @@ async def create_inventory_check(
     session.add(item)
     await session.flush()
     return item
+
+
+async def inventory_check_detail(session: AsyncSession, org_id: UUID, check_id: UUID) -> dict[str, object]:
+    item = await session.scalar(
+        select(InventoryCheck).where(InventoryCheck.org_id == org_id, InventoryCheck.id == check_id)
+    )
+    if item is None:
+        raise _not_found("Inventory check")
+    location = await session.scalar(
+        select(CustodyLocation).where(
+            CustodyLocation.org_id == org_id,
+            CustodyLocation.id == item.location_id,
+        )
+    )
+    observations = {
+        row.application_id: row
+        for row in await session.scalars(
+            select(InventoryCheckItem).where(
+                InventoryCheckItem.org_id == org_id,
+                InventoryCheckItem.inventory_check_id == item.id,
+            )
+        )
+    }
+    candidates = (
+        await session.execute(
+            select(Asset, LoanApplication)
+            .join(
+                LoanApplication,
+                (LoanApplication.id == Asset.application_id) & (LoanApplication.org_id == org_id),
+            )
+            .where(
+                Asset.org_id == org_id,
+                Asset.collateral_status.in_({"stored", "incident_hold", "release_authorized"}),
+            )
+            .order_by(LoanApplication.application_no)
+        )
+    ).all()
+    assets: list[dict[str, object]] = []
+    for asset, application in candidates:
+        last_location = await session.scalar(
+            select(CustodyEvent.location_id)
+            .where(CustodyEvent.org_id == org_id, CustodyEvent.application_id == application.id)
+            .order_by(CustodyEvent.occurred_at.desc())
+            .limit(1)
+        )
+        if last_location != item.location_id:
+            continue
+        observation = observations.get(application.id)
+        assets.append(
+            {
+                "application_id": application.id,
+                "application_no": application.application_no,
+                "asset_code": asset.asset_code,
+                "asset_label": " ".join(value for value in (asset.brand, asset.model) if value) or asset.category,
+                "expected_status": asset.collateral_status,
+                "observed_status": observation.observed_status if observation else None,
+                "result": observation.result if observation else None,
+                "note": observation.note if observation else None,
+            }
+        )
+    return {
+        "id": item.id,
+        "location": {
+            "id": item.location_id,
+            "code": location.code if location else "",
+            "name": location.name if location else "",
+        },
+        "status": item.status,
+        "performed_by_user_id": item.performed_by_user_id,
+        "reviewed_by_user_id": item.reviewed_by_user_id,
+        "counted_at": item.counted_at,
+        "approved_at": item.approved_at,
+        "assets": assets,
+    }
 
 
 async def submit_inventory_check(

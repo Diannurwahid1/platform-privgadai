@@ -277,6 +277,25 @@ export type ApprovalQueueItem = {
   priority: string; request_reason: string; payload_snapshot: Record<string, unknown>; due_at: string | null;
   decided_by_user_id: string | null; decided_at: string | null; decision_reason: string | null; created_at: string;
 };
+export type InventoryCheckDetail = {
+  id: string;
+  location: { id: string; code: string; name: string };
+  status: string;
+  performed_by_user_id: string;
+  reviewed_by_user_id: string | null;
+  counted_at: string;
+  approved_at: string | null;
+  assets: Array<{
+    application_id: string;
+    application_no: string;
+    asset_code: string;
+    asset_label: string;
+    expected_status: string;
+    observed_status: string | null;
+    result: string | null;
+    note: string | null;
+  }>;
+};
 
 export const listBranches = () => apiFetch<BranchItem[]>("/v1/master/branches");
 export const listAssetCategories = () =>
@@ -386,4 +405,11 @@ export const listDomainEvents = (limit = 200) => apiFetch<DomainEvent[]>(`/v1/do
 export const listInventoryChecks = () => apiFetch<Array<Record<string, unknown>>>("/v1/inventory-checks");
 export const createInventoryCheck = (location_id: string) =>
   apiFetch<ActionResult>("/v1/inventory-checks", { method: "POST", json: { location_id } });
+export const getInventoryCheck = (id: string) =>
+  apiFetch<InventoryCheckDetail>(`/v1/inventory-checks/${id}`);
+export const submitInventoryCheck = (id: string, observations: Array<Record<string, unknown>>) =>
+  apiFetch<ActionResult>(`/v1/inventory-checks/${id}/submit`, {
+    method: "POST",
+    json: { observations },
+  });
 

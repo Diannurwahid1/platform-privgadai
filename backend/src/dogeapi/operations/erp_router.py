@@ -5,7 +5,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from dogeapi.deps import OrgIdDep, SessionDep, UserDep
 from dogeapi.models import (
@@ -22,6 +22,7 @@ from dogeapi.models import (
     Consent,
     DebtorProfile,
     InventoryCheck,
+    InventoryCheckItem,
     KycEvent,
     KycVerification,
     LoanAccount,
@@ -713,9 +714,42 @@ async def inventory_checks(session: SessionDep, org_id: OrgIdDep, user: UserDep)
             "status": item.status,
             "counted_at": item.counted_at,
             "approved_at": item.approved_at,
+            "item_count": int(
+                (
+                    await session.scalar(
+                        select(func.count(InventoryCheckItem.id)).where(
+                            InventoryCheckItem.org_id == org_id,
+                            InventoryCheckItem.inventory_check_id == item.id,
+                        )
+                    )
+                )
+                or 0
+            ),
+            "variance_count": int(
+                (
+                    await session.scalar(
+                        select(func.count(InventoryCheckItem.id)).where(
+                            InventoryCheckItem.org_id == org_id,
+                            InventoryCheckItem.inventory_check_id == item.id,
+                            InventoryCheckItem.result == "variance",
+                        )
+                    )
+                )
+                or 0
+            ),
         }
         for item in rows
     ]
+
+
+@router.get("/inventory-checks/{check_id}")
+async def inventory_check_detail(
+    check_id: UUID, session: SessionDep, org_id: OrgIdDep, user: UserDep
+) -> dict[str, object]:
+    await mvp_service.ensure_any_operational_role(
+        session, org_id, user.id, {"ops_admin", "branch_manager", "custodian", "auditor"}
+    )
+    return await erp_service.inventory_check_detail(session, org_id, check_id)
 
 
 @router.post(
