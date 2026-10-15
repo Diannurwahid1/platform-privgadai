@@ -77,6 +77,12 @@ class LoanApplication(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             name="fk_applications_org_borrower",
             ondelete="RESTRICT",
         ),
+        ForeignKeyConstraint(
+            ["org_id", "product_id"],
+            ["loan_products.org_id", "loan_products.id"],
+            name="fk_applications_org_product",
+            ondelete="RESTRICT",
+        ),
     )
 
     org_id: Mapped[uuid.UUID] = mapped_column(
@@ -87,11 +93,16 @@ class LoanApplication(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     assigned_user_id: Mapped[uuid.UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    product_id: Mapped[uuid.UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True, index=True)
     application_no: Mapped[str] = mapped_column(String(40), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     priority: Mapped[str] = mapped_column(String(16), nullable=False, default="normal", server_default="normal")
     asset_category: Mapped[str] = mapped_column(String(64), nullable=False)
     requested_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    requested_tenor_days: Mapped[int | None] = mapped_column(nullable=True)
+    purpose: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    revision: Mapped[int] = mapped_column(nullable=False, default=1, server_default="1")
+    sla_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
 
 

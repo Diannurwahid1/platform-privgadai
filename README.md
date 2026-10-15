@@ -2,7 +2,7 @@
 
 Codebase awal untuk MVP B2B SaaS PrivGadai. Rancangan produk dan urutan pengerjaan mengikuti `../PrivGadai_Technical_Architecture_Blueprint_V3_Lengkap.pdf` dan `../TASK.md`.
 
-**Status:** fondasi SaaS sudah disalin dari `../ai-template-main/`. Modul transaksi gadai, Collateral Passport, AI appraisal, dan proof registry belum diimplementasikan. Gunakan data sintetis untuk semua pengujian.
+**Status:** MVP operasional manual sudah tersedia di atas fondasi `../ai-template-main/`: multi-tenant/branch, master data, intake nasabah, review, human appraisal, offer/acceptance, pickup, custody, settlement, incident, evidence privat, dan Collateral Passport. AI dan proof registry tetap fase lanjutan. Gunakan data sintetis untuk semua pengujian.
 
 ## Arsitektur yang dituju
 
@@ -15,10 +15,10 @@ Codebase awal untuk MVP B2B SaaS PrivGadai. Rancangan produk dan urutan pengerja
 
 | Path | Kondisi |
 | --- | --- |
-| `backend/` | Auth, organisasi/tenant dasar, audit HTTP, admin, dan migrasi dari template. Domain PrivGadai belum ada. |
-| `frontend/` | Frontend tenant dari template; halaman awal telah diberi konteks PrivGadai. Portal per role belum ada. |
+| `backend/` | Auth, tenant/RBAC, master data, tiga state machine, proses pinjaman/agunan, audit domain, evidence privat, admin, migrasi, seed, dan tes tenant. |
+| `frontend/` | Partner Operations, portal intake nasabah, Field Agent workspace, Master Data, Applications, dan Collateral Passport. |
 | `admin/` | Portal super-admin bawaan template. Akan digabung ke satu pengalaman frontend sesuai V3.0. |
-| `infra/` | Konfigurasi Compose warisan template yang tidak dipakai untuk setup lokal. Storage evidence dan worker belum ada. |
+| `infra/` | Konfigurasi Compose warisan template yang tidak dipakai untuk setup lokal. Evidence MVP memakai storage privat lokal `backend/.data/evidence`; worker belum ada. |
 
 Struktur target V3.0 (`apps/web`, `services/backend`, `contracts`, `packages/api-types`, `infrastructure`, `docs`) diterapkan bertahap setelah fondasi dapat diuji. Perubahan lokasi folder tidak boleh memutus jalur migrasi atau build.
 
@@ -34,18 +34,25 @@ Prasyarat: PostgreSQL lokal pada port 5432, Python 3.12, `uv`, serta Bun atau pn
    cd backend
    python -m uv sync --frozen --python 3.12
    .\.venv\Scripts\python.exe -m alembic upgrade head
+   .\.venv\Scripts\python.exe scripts\seed_privgadai_demo.py
    .\.venv\Scripts\python.exe -m uvicorn dogeapi.main:app --reload
    ```
 
-4. Pada terminal lain, jalankan `pnpm install` lalu `pnpm run dev` dari `frontend/`. Portal admin sementara dapat dijalankan dengan perintah yang sama dari `admin/`.
+4. Pada terminal lain, jalankan `npm install` lalu `npm run dev` dari `frontend/`. Portal admin sementara dapat dijalankan dengan perintah yang sama dari `admin/`.
 
 Frontend: `http://localhost:3000`; API docs: `http://localhost:8000/docs`; admin sementara: `http://localhost:3001`. `GET /readyz` memeriksa database dan token store PostgreSQL.
 
 Tes backend memakai database `privgadai_test` yang dibuat otomatis dari konfigurasi `.env` jika pengguna PostgreSQL memiliki izin. Fitur rate limiting dan AI chat warisan template masih memerlukan Redis; keduanya nonaktif pada mode lokal ini. Jangan memakai data nasabah nyata atau konfigurasi development untuk produksi.
 
+## Route MVP
+
+- Partner: `/orgs/[slug]`, `/applications`, `/master-data`, `/collateral`, `/field`
+- Nasabah: `/apply/[slug]`
+- API/OpenAPI: `http://localhost:8000/docs`
+
 ## Pekerjaan berikutnya
 
-Lihat `../TASK.md`. Mulai dari audit fondasi, desain ERD dan tiga state machine, tenant isolation, lalu Sprint 1–8 sesuai Technical Blueprint V3.0.
+Lihat `../TASK.md`. Fokus hardening berikutnya: object storage terenkripsi, malware scanner, signed URL, maker-checker, idempotency, MFA sensitif, identitas borrower, offline PWA, backup/restore, lalu AI decision-support dan proof registry opsional.
 
 ## Asal kode dan lisensi
 

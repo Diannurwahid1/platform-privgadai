@@ -12,17 +12,21 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from dogeapi.db import get_session_factory
 from dogeapi.models import (
     ApplicationStatusHistory,
     Asset,
+    AssetCategory,
     Borrower,
     Branch,
+    CustodyLocation,
     LoanApplication,
+    LoanProduct,
     Membership,
     Organization,
+    StaffAssignment,
 )
 
 DEMO_APPLICATIONS = (
@@ -152,32 +156,97 @@ async def seed(org_slug: str | None) -> None:
             raise SystemExit(f"No organization found for slug: {org_slug or '(any)'}")
 
         for org in organizations:
-            branch_count = await session.scalar(select(func.count(Branch.id)).where(Branch.org_id == org.id))
-            if branch_count:
-                print(f"skip {org.slug}: operations data already exists")
-                continue
-
             actor_user_id = await session.scalar(
                 select(Membership.user_id).where(Membership.org_id == org.id).order_by(Membership.created_at).limit(1)
             )
-            branches = [
-                Branch(
+            branch_count = await session.scalar(select(func.count(Branch.id)).where(Branch.org_id == org.id))
+            if branch_count:
+                branches = list(
+                    await session.scalars(select(Branch).where(Branch.org_id == org.id).order_by(Branch.code))
+                )
+            else:
+                branches = [
+                    Branch(
+                        org_id=org.id,
+                        code="JKT-01",
+                        name="Cabang Jakarta Pusat",
+                        city="Jakarta",
+                        address="Data sintetis — area operasional Jakarta Pusat",
+                    ),
+                    Branch(
+                        org_id=org.id,
+                        code="JKT-02",
+                        name="Cabang Jakarta Selatan",
+                        city="Jakarta",
+                        address="Data sintetis — area operasional Jakarta Selatan",
+                    ),
+                ]
+                session.add_all(branches)
+                await session.flush()
+
+            if not await session.scalar(select(func.count(AssetCategory.id)).where(AssetCategory.org_id == org.id)):
+                session.add_all(
+                    [
+                        AssetCategory(org_id=org.id, code="smartphone", name="Smartphone", requires_serial_number=True),
+                        AssetCategory(org_id=org.id, code="laptop", name="Laptop", requires_serial_number=True),
+                        AssetCategory(org_id=org.id, code="emas", name="Emas & Perhiasan"),
+                        AssetCategory(org_id=org.id, code="kamera", name="Kamera", requires_serial_number=True),
+                        AssetCategory(
+                            org_id=org.id, code="jam tangan", name="Jam Tangan Premium", requires_serial_number=True
+                        ),
+                    ]
+                )
+
+            product = await session.scalar(select(LoanProduct).where(LoanProduct.org_id == org.id).limit(1))
+            if product is None:
+                product = LoanProduct(
                     org_id=org.id,
-                    code="JKT-01",
-                    name="Cabang Jakarta Pusat",
-                    city="Jakarta",
-                    address="Data sintetis — area operasional Jakarta Pusat",
-                ),
-                Branch(
-                    org_id=org.id,
-                    code="JKT-02",
-                    name="Cabang Jakarta Selatan",
-                    city="Jakarta",
-                    address="Data sintetis — area operasional Jakarta Selatan",
-                ),
-            ]
-            session.add_all(branches)
-            await session.flush()
+                    code="REGULER-30",
+                    name="Gadai Reguler",
+                    min_amount=Decimal("500000"),
+                    max_amount=Decimal("50000000"),
+                    max_ltv_percent=Decimal("80"),
+                    allowed_tenors_days=[30, 60, 90, 120],
+                    service_fee_percent=Decimal("5"),
+                )
+                session.add(product)
+                await session.flush()
+
+            if not await session.scalar(select(func.count(CustodyLocation.id)).where(CustodyLocation.org_id == org.id)):
+                session.add_all(
+                    [
+                        CustodyLocation(
+                            org_id=org.id,
+                            branch_id=branch.id,
+                            code=f"VAULT-{branch.code}",
+                            name=f"Brankas {branch.name}",
+                            location_type="branch_vault",
+                        )
+                        for branch in branches
+                    ]
+                )
+
+            if actor_user_id and not await session.scalar(
+                select(func.count(StaffAssignment.id)).where(StaffAssignment.org_id == org.id)
+            ):
+                session.add(
+                    StaffAssignment(
+                        org_id=org.id,
+                        user_id=actor_user_id,
+                        branch_id=branches[0].id,
+                        operational_role="ops_admin",
+                    )
+                )
+
+            if branch_count:
+                await session.execute(
+                    update(LoanApplication)
+                    .where(LoanApplication.org_id == org.id, LoanApplication.product_id.is_(None))
+                    .values(product_id=product.id, requested_tenor_days=30)
+                )
+                await session.commit()
+                print(f"updated {org.slug}: master data ready; operations data preserved")
+                continue
 
             now = datetime.now(UTC)
             for index, item in enumerate(DEMO_APPLICATIONS, start=1):
@@ -210,11 +279,13 @@ async def seed(org_slug: str | None) -> None:
                     branch_id=branches[index % 2].id,
                     borrower_id=borrower.id,
                     assigned_user_id=actor_user_id,
+                    product_id=product.id,
                     application_no=f"PG-DEMO-2026-{index:04d}",
                     status=status,
                     priority=priority,
                     asset_category=category,
                     requested_amount=Decimal(requested),
+                    requested_tenor_days=30,
                     submitted_at=submitted_at,
                 )
                 session.add(application)

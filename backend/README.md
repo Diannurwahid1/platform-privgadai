@@ -1,25 +1,21 @@
 # Backend
 
-FastAPI + authx-powered backend for the AI Template multi-tenant SaaS boilerplate.
+FastAPI backend for the PrivGadai multi-tenant MVP, adapted from the AI Template foundation.
 
 ## Quick start
 
 ```bash
-uv sync
-cp ../.env.example ../.env
-docker compose -f ../infra/docker-compose.yml up -d postgres redis mailpit
-uv run alembic upgrade head
-uv run dogeapi admin create --email admin@example.com --password change-me-admin-password
-uv run uvicorn dogeapi.main:app --reload
+python -m uv sync --frozen --python 3.12
+copy ..\.env.example ..\.env
+.\.venv\Scripts\python.exe -m alembic upgrade head
+.\.venv\Scripts\python.exe scripts\seed_privgadai_demo.py
+.\.venv\Scripts\python.exe -m uvicorn dogeapi.main:app --reload
 ```
 
 Visit `http://localhost:8000/docs` for the OpenAPI UI. Use `/healthz` for
-liveness and `/readyz` for deployment readiness checks against Postgres and
-Redis.
-
-For the full Docker stack, run commands from the repository root through
-`make stack-up`. That path loads `.env` and starts the Nginx gateway at
-`http://localhost:8080`.
+liveness and `/readyz` for deployment readiness checks against PostgreSQL and
+the PostgreSQL token store. Redis-dependent template features remain disabled
+in the local MVP.
 
 ## Development
 
@@ -54,6 +50,7 @@ src/dogeapi/
 ├── deps.py            # FastAPI deps (db, redis, auth, current_user, current_org)
 ├── auth/              # authx wiring + register/login/refresh/logout
 ├── organizations/     # orgs, memberships, invitations, RBAC
+├── operations/        # PrivGadai master data, workflow, public intake
 ├── api_keys/          # X-API-Key auth (optional)
 ├── audit_log/         # mutation logging (optional)
 ├── rate_limit/        # authx RateLimiter + Redis (optional)

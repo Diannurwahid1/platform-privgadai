@@ -82,12 +82,12 @@ function OrgChrome({ children }: { children: ReactNode }) {
       icon: ClipboardList,
       badge: "8",
     },
-    { label: "Penaksiran", href: null, icon: Scale, badge: "2" },
-    { label: "Barang Jaminan", href: null, icon: PackageSearch },
-    { label: "Pickup", href: null, icon: Truck },
-    { label: "Custody", href: null, icon: Warehouse },
-    { label: "Settlement", href: null, icon: BadgeDollarSign },
-    { label: "Exception", href: null, icon: ShieldAlert, badge: "1" },
+    { label: "Penaksiran", href: `/orgs/${slug}/applications`, icon: Scale, badge: "2" },
+    { label: "Barang Jaminan", href: `/orgs/${slug}/collateral`, icon: PackageSearch },
+    { label: "Pickup", href: `/orgs/${slug}/field`, icon: Truck },
+    { label: "Custody", href: `/orgs/${slug}/collateral`, icon: Warehouse },
+    { label: "Settlement", href: `/orgs/${slug}/collateral`, icon: BadgeDollarSign },
+    { label: "Exception", href: `/orgs/${slug}/applications`, icon: ShieldAlert, badge: "1" },
     {
       label: "Audit",
       href: `/orgs/${slug}/audit-log`,
@@ -95,6 +95,7 @@ function OrgChrome({ children }: { children: ReactNode }) {
     },
   ];
   const supportNav: NavItem[] = [
+    { label: "Master data", href: `/orgs/${slug}/master-data`, icon: Building2 },
     { label: "Tim & akses", href: `/orgs/${slug}/members`, icon: Users },
     { label: "Pengaturan mitra", href: `/orgs/${slug}/settings`, icon: Settings },
   ];

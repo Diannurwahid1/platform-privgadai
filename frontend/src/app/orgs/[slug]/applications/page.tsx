@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ClipboardList, Search, SlidersHorizontal } from "lucide-react";
+import Link from "next/link";
+import { useParams } from "next/navigation";
+import { ClipboardList, Plus, Search, SlidersHorizontal } from "lucide-react";
 import { motion } from "framer-motion";
 import {
   listApplications,
@@ -28,6 +30,7 @@ function idr(value: number) {
 }
 
 export default function ApplicationsInboxPage() {
+  const { slug } = useParams<{ slug: string }>();
   const [applications, setApplications] = useState<ApplicationQueueItem[] | null>(
     null,
   );
@@ -77,9 +80,14 @@ export default function ApplicationsInboxPage() {
             Triase pengajuan nasabah sebelum masuk ke appraisal manusia.
           </p>
         </div>
-        <div className="inline-flex items-center gap-2 rounded-full border border-success/25 bg-success/8 px-3 py-2 text-xs font-semibold text-success">
-          <span className="h-2 w-2 rounded-full bg-success" />
-          Tenant isolation aktif
+        <div className="flex flex-wrap gap-2">
+          <Link href={`/orgs/${slug}/applications/new`} className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-xs font-bold text-white">
+            <Plus className="h-4 w-4" /> Pengajuan baru
+          </Link>
+          <div className="inline-flex items-center gap-2 rounded-full border border-success/25 bg-success/8 px-3 py-2 text-xs font-semibold text-success">
+            <span className="h-2 w-2 rounded-full bg-success" />
+            Tenant isolation aktif
+          </div>
         </div>
       </header>
 
@@ -130,7 +138,9 @@ export default function ApplicationsInboxPage() {
                   className="border-b border-border/70 text-sm last:border-0 hover:bg-surface-soft"
                 >
                   <td className="px-5 py-4 font-mono text-xs font-semibold text-primary">
-                    {item.application_no}
+                    <Link className="hover:underline" href={`/orgs/${slug}/applications/${item.id}`}>
+                      {item.application_no}
+                    </Link>
                   </td>
                   <td className="px-5 py-4">
                     <p className="font-semibold">{item.borrower_name}</p>

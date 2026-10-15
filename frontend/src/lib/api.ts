@@ -71,3 +71,25 @@ export async function apiFetch<T>(
 
   return (await response.json()) as T;
 }
+
+export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
+  const token = readCookie("csrf_access_token");
+  const response = await fetch(`${BFF_PREFIX}${path}`, {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      Accept: "application/json",
+      ...(token ? { "X-CSRF-TOKEN": token } : {}),
+    },
+    body: form,
+  });
+  if (!response.ok) {
+    let detail = response.statusText;
+    try {
+      const body = await response.json();
+      detail = body?.detail ?? body?.msg ?? detail;
+    } catch {}
+    throw { status: response.status, detail } as ApiError;
+  }
+  return (await response.json()) as T;
+}

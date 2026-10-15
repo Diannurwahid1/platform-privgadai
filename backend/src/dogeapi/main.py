@@ -133,8 +133,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # this router at module load time creates a cycle through security ->
     # organizations.service -> organizations.router in a fresh process.
     from dogeapi.operations.router import router as operations_router
+    from dogeapi.operations.public_router import router as public_operations_router
 
     app.include_router(operations_router)
+    app.include_router(public_operations_router)
 
     if settings.FEATURE_API_KEYS:
         from dogeapi.api_keys.router import router as api_keys_router
