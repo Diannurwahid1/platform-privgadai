@@ -33,6 +33,7 @@ from dogeapi.models import (
     EvidenceFile,
     HumanAppraisal,
     Incident,
+    IncidentEvent,
     KycVerification,
     LoanAccount,
     LoanApplication,
@@ -1147,10 +1148,33 @@ async def create_incident(session: AsyncSession, org_id: UUID, actor_id: UUID, d
         {"ops_admin", "branch_manager", "loan_officer", "reviewer", "appraiser", "field_agent", "custodian", "finance"},
     )
     asset = await _get_asset(session, org_id, data.application_id)
+    previous_collateral_status = asset.collateral_status
     if can_transition(COLLATERAL_TRANSITIONS, asset.collateral_status, "incident_hold"):
         asset.collateral_status = "incident_hold"
-    item = Incident(org_id=org_id, reported_by_user_id=actor_id, **data.model_dump())
+    sla_hours = {"critical": 2, "high": 8, "medium": 24, "low": 72}[data.severity]
+    item = Incident(
+        org_id=org_id,
+        reported_by_user_id=actor_id,
+        due_at=datetime.now(UTC) + timedelta(hours=sla_hours),
+        **data.model_dump(),
+    )
     session.add(item)
+    await session.flush()
+    session.add(
+        IncidentEvent(
+            org_id=org_id,
+            incident_id=item.id,
+            actor_user_id=actor_id,
+            event_type="IncidentReported",
+            to_status="open",
+            note=data.description,
+            event_metadata={
+                "severity": data.severity,
+                "application_id": str(data.application_id),
+                "previous_collateral_status": previous_collateral_status,
+            },
+        )
+    )
     _add_collateral_event(
         session, org_id, data.application_id, actor_id, "incident", "Incident reported", data.description
     )

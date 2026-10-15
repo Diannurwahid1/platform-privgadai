@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import {
   ArrowLeft,
+  AlertTriangle,
   CheckCircle2,
   CircleDollarSign,
   ClipboardCheck,
@@ -19,6 +20,7 @@ import {
   acceptOffer,
   createAppraisal,
   createCustodyEvent,
+  createIncident,
   createOffer,
   createPickup,
   disburseLoan,
@@ -65,6 +67,9 @@ export default function ApplicationDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [incidentType, setIncidentType] = useState("custody_exception");
+  const [incidentSeverity, setIncidentSeverity] = useState("medium");
+  const [incidentDescription, setIncidentDescription] = useState("");
 
   const load = useCallback(async () => {
     const [application, passport, custody] = await Promise.all([
@@ -143,6 +148,17 @@ export default function ApplicationDetailPage() {
       <section className="rounded-[var(--pg-radius-lg)] border border-border bg-surface p-5 shadow-[var(--pg-shadow-sm)]">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-bold">Evidence privat</h2><p className="mt-1 text-xs text-muted-foreground">JPEG, PNG, WebP, atau PDF maksimal 10 MB; file disimpan di area tenant dan menunggu pemindaian.</p></div><label className="inline-flex h-10 cursor-pointer items-center justify-center rounded-xl bg-surface-blue px-4 text-xs font-bold text-primary"><input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="hidden" disabled={busy} onChange={(event) => { const file = event.target.files?.[0]; if (file) void act("Evidence berhasil diunggah.", () => uploadEvidence(id, file)); }} />Unggah evidence</label></div>
         <div className="mt-4 flex flex-wrap gap-2">{detail.evidence.map((item) => <span key={String(item.id)} className="rounded-full border border-border bg-surface-soft px-3 py-1.5 text-[11px] font-semibold">{String(item.file_name)} · {String(item.scan_status)}</span>)}{!detail.evidence.length && <p className="text-xs text-muted-foreground">Belum ada evidence.</p>}</div>
+      </section>
+
+      <section className="rounded-[var(--pg-radius-lg)] border border-border bg-surface p-5 shadow-[var(--pg-shadow-sm)]">
+        <div className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-amber-600" /><div><h2 className="font-bold">Laporkan incident operasional</h2><p className="mt-1 text-xs text-muted-foreground">Pelaporan menahan agunan bila status memungkinkan dan membuat case dengan SLA sesuai severity.</p></div></div>
+        <div className="mt-4 grid gap-3 lg:grid-cols-[0.7fr_0.5fr_1.8fr_auto]">
+          <select value={incidentType} onChange={(event) => setIncidentType(event.target.value)} className="h-10 rounded-xl border border-border bg-background px-3 text-sm"><option value="custody_exception">Custody exception</option><option value="seal_mismatch">Seal mismatch</option><option value="asset_damage">Kerusakan agunan</option><option value="missing_asset">Agunan tidak ditemukan</option><option value="process_breach">Pelanggaran proses</option><option value="fraud_suspicion">Indikasi fraud</option></select>
+          <select value={incidentSeverity} onChange={(event) => setIncidentSeverity(event.target.value)} className="h-10 rounded-xl border border-border bg-background px-3 text-sm"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option></select>
+          <input value={incidentDescription} onChange={(event) => setIncidentDescription(event.target.value)} placeholder="Uraikan fakta kejadian, waktu, lokasi, dan kondisi awal…" className="h-10 min-w-0 rounded-xl border border-border bg-background px-3 text-sm" />
+          <button disabled={busy || incidentDescription.length < 5} onClick={() => void act("Incident dilaporkan dan masuk Exception Register.", async () => { await createIncident({ application_id: id, incident_type: incidentType, severity: incidentSeverity, description: incidentDescription }); setIncidentDescription(""); })} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 text-xs font-bold text-amber-800 disabled:opacity-50"><AlertTriangle className="h-4 w-4" />Laporkan</button>
+        </div>
+        {detail.incidents.length > 0 && <div className="mt-4 flex flex-wrap gap-2">{detail.incidents.map((incident) => <Link key={String(incident.id)} href={`/orgs/${slug}/compliance/exceptions/${String(incident.id)}`} className="rounded-lg border border-border bg-surface-soft px-3 py-2 text-xs font-semibold hover:border-primary/30"><span className="uppercase text-amber-700">{String(incident.severity)}</span> · {String(incident.type).replaceAll("_", " ")} · {String(incident.status)}</Link>)}</div>}
       </section>
 
       <section className="grid gap-5 2xl:grid-cols-[minmax(0,1.45fr)_minmax(360px,0.75fr)]">

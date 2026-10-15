@@ -18,6 +18,8 @@ from dogeapi.models import (
     CollateralEvent,
     CustodyEvent,
     HumanAppraisal,
+    Incident,
+    IncidentEvent,
     InventoryCheck,
     Membership,
     RegulatoryReportRun,
@@ -212,6 +214,63 @@ async def decide_approval(
             teller_session.variance_amount = None
             teller_session.variance_reason = None
             teller_session.closed_at = None
+    elif item.aggregate_type == "incident" and item.action == "resolve_incident":
+        incident = await session.scalar(
+            select(Incident).where(Incident.org_id == org_id, Incident.id == item.aggregate_id).with_for_update()
+        )
+        if incident is None or incident.status != "pending_resolution":
+            raise HTTPException(status.HTTP_409_CONFLICT, "Incident tidak siap diputuskan")
+        previous_incident_status = incident.status
+        if decision == "approved":
+            incident.status = "resolved"
+            incident.resolved_by_user_id = actor_id
+            incident.resolved_at = datetime.now(UTC)
+            asset = await session.scalar(
+                select(Asset)
+                .where(Asset.org_id == org_id, Asset.application_id == incident.application_id)
+                .with_for_update()
+            )
+            if asset is not None and asset.collateral_status == "incident_hold":
+                reported_event = await session.scalar(
+                    select(IncidentEvent)
+                    .where(
+                        IncidentEvent.org_id == org_id,
+                        IncidentEvent.incident_id == incident.id,
+                        IncidentEvent.event_type == "IncidentReported",
+                    )
+                    .order_by(IncidentEvent.occurred_at)
+                )
+                previous_collateral_status = (
+                    str(reported_event.event_metadata.get("previous_collateral_status"))
+                    if reported_event is not None
+                    else "stored"
+                )
+                asset.collateral_status = previous_collateral_status
+                session.add(
+                    CollateralEvent(
+                        org_id=org_id,
+                        application_id=incident.application_id,
+                        actor_user_id=actor_id,
+                        event_type="incident_resolved",
+                        title="Incident resolved",
+                        description=incident.resolution_note,
+                        event_metadata={"incident_id": str(incident.id), "approval_id": str(item.id)},
+                    )
+                )
+        else:
+            incident.status = "investigating"
+        session.add(
+            IncidentEvent(
+                org_id=org_id,
+                incident_id=incident.id,
+                actor_user_id=actor_id,
+                event_type="IncidentResolutionApproved" if decision == "approved" else "IncidentResolutionRejected",
+                from_status=previous_incident_status,
+                to_status=incident.status,
+                note=reason,
+                event_metadata={"approval_id": str(item.id)},
+            )
+        )
     session.add(
         ApprovalEvent(
             org_id=org_id,

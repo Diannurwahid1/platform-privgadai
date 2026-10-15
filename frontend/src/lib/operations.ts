@@ -328,6 +328,22 @@ export type CollectionCaseDetail = {
   notes: Array<{ id: string; actor_user_id: string; channel: string; note: string; outcome: string; next_action_at: string | null; created_at: string }>;
   promises: Array<{ id: string; amount: number; promised_at: string; channel: string; status: string; note: string; resolution_reason: string | null; resolved_at: string | null; is_overdue: boolean; created_at: string }>;
 };
+export type IncidentListItem = {
+  id: string; application_id: string; application_no: string; borrower_name: string;
+  branch_code: string; branch_name: string; incident_type: string; severity: string; status: string;
+  description: string; assigned_to_user_id: string | null; assigned_to_name: string | null;
+  due_at: string | null; is_overdue: boolean; created_at: string;
+};
+export type IncidentDetail = {
+  id: string;
+  application: { id: string; application_no: string; borrower_name: string; branch_id: string; branch_code: string; branch_name: string };
+  asset: { asset_code: string; label: string; collateral_status: string };
+  incident_type: string; severity: string; status: string; description: string;
+  reported_by_user_id: string; assigned_to_user_id: string | null; root_cause: string | null;
+  action_plan: string | null; due_at: string | null; resolution_note: string | null;
+  resolved_by_user_id: string | null; resolved_at: string | null; reopened_count: number; created_at: string;
+  events: Array<{ id: string; event_type: string; actor_user_id: string | null; from_status: string | null; to_status: string | null; note: string | null; metadata: Record<string, unknown>; occurred_at: string }>;
+};
 
 export const listBranches = () => apiFetch<BranchItem[]>("/v1/master/branches");
 export const listAssetCategories = () =>
@@ -358,6 +374,8 @@ export const transitionApplication = (id: string, to_status: string, note?: stri
   });
 export const createAppraisal = (json: Record<string, unknown>) =>
   apiFetch<ActionResult>("/v1/appraisals", { method: "POST", json });
+export const createIncident = (json: Record<string, unknown>) =>
+  apiFetch<ActionResult>("/v1/incidents", { method: "POST", json });
 export const createOffer = (json: Record<string, unknown>) =>
   apiFetch<ActionResult>("/v1/offers", { method: "POST", json });
 export const acceptOffer = (offerId: string) =>
@@ -423,6 +441,16 @@ export const createAccountingPeriod = (period_start: string, period_end: string)
 export const requestAccountingPeriodClose = (id: string, reason: string) =>
   apiFetch<ActionResult>(`/v1/accounting/periods/${id}/close`, { method: "POST", json: { reason } });
 export const listCollections = () => apiFetch<Array<Record<string, unknown>>>("/v1/collections");
+export const listIncidents = () => apiFetch<IncidentListItem[]>("/v1/incidents");
+export const getIncident = (id: string) => apiFetch<IncidentDetail>(`/v1/incidents/${id}`);
+export const triageIncident = (id: string, json: Record<string, unknown>) =>
+  apiFetch<{ id: string; status: string; message: string }>(`/v1/incidents/${id}/triage`, { method: "POST", json });
+export const addIncidentNote = (id: string, note: string) =>
+  apiFetch<{ id: string; status: string; message: string }>(`/v1/incidents/${id}/notes`, { method: "POST", json: { note } });
+export const requestIncidentResolution = (id: string, resolution_note: string) =>
+  apiFetch<{ id: string; status: string; message: string }>(`/v1/incidents/${id}/resolution`, { method: "POST", json: { resolution_note } });
+export const reopenIncident = (id: string, reason: string) =>
+  apiFetch<{ id: string; status: string; message: string }>(`/v1/incidents/${id}/reopen`, { method: "POST", json: { reason } });
 export const getCollectionCase = (id: string) => apiFetch<CollectionCaseDetail>(`/v1/collections/${id}`);
 export const addCollectionNote = (id: string, json: Record<string, unknown>) =>
   apiFetch<ActionResult>(`/v1/collections/${id}/notes`, { method: "POST", json });

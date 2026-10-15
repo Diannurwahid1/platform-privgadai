@@ -86,6 +86,8 @@ Exit: transaksi uang mempunyai source event, balanced journal, receipt, dan reko
   - Delegasi/out-of-office berjangka, pencabutan tanpa menghapus histori, jejak keputusan delegasi, dan sweep eskalasi SLA dua tingkat sudah tersedia.
   - Integrasi scheduler terkelola untuk menjalankan sweep tanpa tindakan operator masih menjadi deployment task.
 - [ ] F6-03: exception case dan investigation workflow.
+  - Incident register nyata, branch scope, owner, SLA, root cause, corrective action, event history, collateral hold, maker-checker resolution, dan reopen tersedia.
+  - Evidence attachment khusus kasus, taxonomy efektif-bertanggal, multi-aggregate linking, dan CAPA analytics masih dilanjutkan.
 - [ ] F6-04: complaint/support ticket dan SLA.
 - [ ] F6-05: configuration workbench versioned/effective-dated.
 - [ ] F6-06: privileged access, MFA, session, security event.

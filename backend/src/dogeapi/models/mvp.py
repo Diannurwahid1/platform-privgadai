@@ -411,6 +411,7 @@ class LoanAccount(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 class Incident(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "incidents"
     __table_args__ = (
+        UniqueConstraint("org_id", "id", name="uq_incidents_org_id"),
         ForeignKeyConstraint(
             ["org_id", "application_id"],
             ["loan_applications.org_id", "loan_applications.id"],
@@ -426,11 +427,48 @@ class Incident(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     reported_by_user_id: Mapped[uuid.UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
     )
+    assigned_to_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     incident_type: Mapped[str] = mapped_column(String(40), nullable=False)
     severity: Mapped[str] = mapped_column(String(16), nullable=False, default="medium", server_default="medium")
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="open", server_default="open", index=True)
     description: Mapped[str] = mapped_column(Text(), nullable=False)
+    root_cause: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    action_plan: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     resolution_note: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    resolved_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reopened_count: Mapped[int] = mapped_column(Integer(), nullable=False, default=0, server_default="0")
+
+
+class IncidentEvent(UUIDPrimaryKeyMixin, Base):
+    __tablename__ = "incident_events"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["org_id", "incident_id"],
+            ["incidents.org_id", "incidents.id"],
+            name="fk_incident_event_org_incident",
+            ondelete="CASCADE",
+        ),
+    )
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    incident_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False, index=True)
+    actor_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    event_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    from_status: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    to_status: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    note: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    event_metadata: Mapped[dict[str, object]] = mapped_column(JSON(), nullable=False, default=dict)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
 class CollateralEvent(UUIDPrimaryKeyMixin, Base):

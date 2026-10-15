@@ -173,6 +173,10 @@ Setiap perpindahan mencatat asal, tujuan, petugas menyerahkan/menerima, waktu, a
 
 Field minimum: type, severity, tenant, branch, aggregate, source event, owner, SLA, root cause, action plan, evidence, approval, resolution, dan reopened count.
 
+Implementasi saat ini menyediakan Incident & Exception Register tenant-scoped dan branch-scoped, detail kasus, severity, SLA, owner, root cause, corrective action, catatan investigasi append-only, status agunan `incident_hold`, approval resolusi oleh branch manager, serta reopen counter. Persetujuan resolusi memulihkan status agunan sebelum incident; penolakan mengembalikan kasus ke investigasi.
+
+Lampiran bukti khusus incident, taxonomy root-cause terversi, relasi banyak aggregate, serta dashboard tren CAPA masih dilanjutkan.
+
 ### Approval inbox
 
 - Queue berdasarkan authority matrix, nominal, product, branch, dan risk.
