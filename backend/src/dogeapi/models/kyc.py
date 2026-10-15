@@ -48,6 +48,7 @@ class KycVerification(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     document_type: Mapped[str] = mapped_column(String(24), nullable=False, default="ktp", server_default="ktp")
     nik_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    national_id_ciphertext: Mapped[str | None] = mapped_column(Text(), nullable=True)
     national_id_masked: Mapped[str] = mapped_column(String(32), nullable=False)
     legal_name: Mapped[str] = mapped_column(String(180), nullable=False)
     birth_place: Mapped[str] = mapped_column(String(100), nullable=False)

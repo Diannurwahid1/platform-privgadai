@@ -392,6 +392,7 @@ class RegulatoryReportRun(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="draft", server_default="draft", index=True)
     validation_results: Mapped[list[dict[str, object]]] = mapped_column(JSON(), nullable=False, default=list)
     report_payload: Mapped[dict[str, object]] = mapped_column(JSON(), nullable=False, default=dict)
+    sensitive_payload_ciphertext: Mapped[str | None] = mapped_column(Text(), nullable=True)
     generated_by_user_id: Mapped[uuid.UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
     )

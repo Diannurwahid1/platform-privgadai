@@ -21,6 +21,7 @@ from dogeapi.models import (
     InventoryCheck,
     Membership,
     RegulatoryReportRun,
+    RegulatoryReportTemplate,
     StaffAssignment,
     User,
 )
@@ -168,6 +169,15 @@ async def decide_approval(
         if decision == "approved":
             report.approved_by_user_id = actor_id
             report.approved_at = datetime.now(UTC)
+    elif item.aggregate_type == "regulatory_template" and item.action == "activate_regulatory_template":
+        template = await session.scalar(
+            select(RegulatoryReportTemplate)
+            .where(RegulatoryReportTemplate.org_id == org_id, RegulatoryReportTemplate.id == item.aggregate_id)
+            .with_for_update()
+        )
+        if template is None or template.status != "pending_approval":
+            raise HTTPException(status.HTTP_409_CONFLICT, "Template regulator tidak siap diputuskan")
+        template.status = "active" if decision == "approved" else "draft"
     elif item.aggregate_type == "accounting_period" and item.action == "close_accounting_period":
         period = await session.scalar(
             select(AccountingPeriod)

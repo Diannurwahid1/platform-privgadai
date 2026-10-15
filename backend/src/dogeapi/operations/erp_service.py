@@ -21,6 +21,7 @@ from dogeapi.models import (
     AccountingPeriod,
     ApprovalRequest,
     Asset,
+    Borrower,
     Branch,
     Cashbox,
     CashTransaction,
@@ -28,14 +29,17 @@ from dogeapi.models import (
     CollectionNote,
     CustodyEvent,
     CustodyLocation,
+    DebtorProfile,
     GLAccount,
     InventoryCheck,
     InventoryCheckItem,
     JournalEntry,
     JournalLine,
+    KycVerification,
     LoanAccount,
     LoanApplication,
     LoanLedgerEntry,
+    PawnAgreement,
     RegulatoryReportRun,
     RegulatoryReportTemplate,
     TellerSession,
@@ -49,6 +53,7 @@ from dogeapi.operations.erp_schemas import (
     RegulatoryRunCreate,
     RegulatoryTemplateCreate,
 )
+from dogeapi.settings import Settings, get_settings
 
 ACCOUNT_DEFINITIONS = (
     ("1100", "Kas dan Bank", "asset", "debit"),
@@ -847,8 +852,51 @@ async def create_regulatory_template(
     return item
 
 
+async def submit_regulatory_template_for_activation(
+    session: AsyncSession, org_id: UUID, actor_id: UUID, template_id: UUID, reason: str
+) -> ApprovalRequest:
+    template = await session.scalar(
+        select(RegulatoryReportTemplate)
+        .where(RegulatoryReportTemplate.org_id == org_id, RegulatoryReportTemplate.id == template_id)
+        .with_for_update()
+    )
+    if template is None:
+        raise _not_found("Regulatory report template")
+    if template.status != "draft":
+        raise HTTPException(status.HTTP_409_CONFLICT, "Only a draft template can be submitted for activation")
+    template.status = "pending_approval"
+    from dogeapi.operations import approval_service
+
+    return await approval_service.request_approval(
+        session,
+        org_id=org_id,
+        branch_id=None,
+        aggregate_type="regulatory_template",
+        aggregate_id=template.id,
+        aggregate_reference=f"{template.report_type}/{template.code}/v{template.version}",
+        action="activate_regulatory_template",
+        requested_by=actor_id,
+        assigned_role="auditor",
+        reason=reason,
+        payload={
+            "report_type": template.report_type,
+            "template_code": template.code,
+            "template_version": template.version,
+            "effective_from": template.effective_from.isoformat(),
+            "mapping_schema": template.mapping_schema,
+            "validation_rules": template.validation_rules,
+        },
+        priority="high",
+        sla_hours=8,
+    )
+
+
 async def create_regulatory_run(
-    session: AsyncSession, org_id: UUID, actor_id: UUID, data: RegulatoryRunCreate
+    session: AsyncSession,
+    org_id: UUID,
+    actor_id: UUID,
+    data: RegulatoryRunCreate,
+    settings: Settings | None = None,
 ) -> RegulatoryReportRun:
     template = await session.scalar(
         select(RegulatoryReportTemplate).where(
@@ -863,6 +911,37 @@ async def create_regulatory_run(
     validations: list[dict[str, object]] = []
     if template.status != "active":
         validations.append({"level": "warning", "code": "TEMPLATE_DRAFT", "message": "Template is not approved"})
+    if template.report_type == "SLIK":
+        payload, sensitive_payload, slik_validations = await _build_slik_payload(
+            session, org_id, data.period_start, data.period_end, settings or get_settings()
+        )
+        validations.extend(slik_validations)
+        item = RegulatoryReportRun(
+            org_id=org_id,
+            template_id=template.id,
+            period_start=data.period_start,
+            period_end=data.period_end,
+            status="validation_failed" if any(x["level"] == "error" for x in validations) else "draft",
+            validation_results=validations,
+            report_payload=jsonable_encoder(
+                {
+                    "report_type": "SLIK",
+                    "template_code": template.code,
+                    "template_version": template.version,
+                    "period_start": data.period_start.isoformat(),
+                    "period_end": data.period_end.isoformat(),
+                    **payload,
+                    "generated_at": datetime.now(UTC).isoformat(),
+                    "submission_status": "not_submitted",
+                }
+            ),
+            sensitive_payload_ciphertext=_encrypt_regulatory_payload(settings or get_settings(), sensitive_payload),
+            generated_by_user_id=actor_id,
+        )
+        session.add(item)
+        await session.flush()
+        return item
+
     loan_rows = (
         await session.execute(
             select(LoanAccount, LoanApplication, Asset)
@@ -915,7 +994,188 @@ async def create_regulatory_run(
     return item
 
 
-async def export_regulatory_package(session: AsyncSession, org_id: UUID, run_id: UUID) -> tuple[bytes, str, str]:
+def _encrypt_regulatory_payload(settings: Settings, payload: dict[str, object]) -> str:
+    from dogeapi.operations.kyc_service import encrypt_pii
+
+    serialized = json.dumps(jsonable_encoder(payload), ensure_ascii=False, separators=(",", ":"))
+    return encrypt_pii(settings, serialized)
+
+
+def _decrypt_regulatory_payload(settings: Settings, ciphertext: str) -> dict[str, object]:
+    from dogeapi.operations.kyc_service import decrypt_pii
+
+    decoded = json.loads(decrypt_pii(settings, ciphertext))
+    return decoded if isinstance(decoded, dict) else {}
+
+
+async def _build_slik_payload(
+    session: AsyncSession, org_id: UUID, period_start: date, period_end: date, settings: Settings
+) -> tuple[dict[str, object], dict[str, object], list[dict[str, object]]]:
+    rows = (
+        await session.execute(
+            select(LoanAccount, LoanApplication, Asset, Borrower, Branch, DebtorProfile, PawnAgreement)
+            .join(
+                LoanApplication, (LoanApplication.id == LoanAccount.application_id) & (LoanApplication.org_id == org_id)
+            )
+            .join(Asset, (Asset.application_id == LoanApplication.id) & (Asset.org_id == org_id))
+            .join(Borrower, (Borrower.id == LoanApplication.borrower_id) & (Borrower.org_id == org_id))
+            .join(Branch, (Branch.id == LoanApplication.branch_id) & (Branch.org_id == org_id))
+            .join(
+                DebtorProfile,
+                (DebtorProfile.borrower_id == Borrower.id) & (DebtorProfile.org_id == org_id),
+                isouter=True,
+            )
+            .join(
+                PawnAgreement,
+                (PawnAgreement.application_id == LoanApplication.id) & (PawnAgreement.org_id == org_id),
+                isouter=True,
+            )
+            .where(LoanAccount.org_id == org_id)
+            .order_by(LoanAccount.account_no)
+        )
+    ).all()
+    borrower_ids = {borrower.id for _, _, _, borrower, _, _, _ in rows}
+    kyc_rows = (
+        list(
+            await session.scalars(
+                select(KycVerification)
+                .where(
+                    KycVerification.org_id == org_id,
+                    KycVerification.borrower_id.in_(borrower_ids),
+                    KycVerification.status == "verified",
+                )
+                .order_by(KycVerification.created_at.desc())
+            )
+        )
+        if borrower_ids
+        else []
+    )
+    latest_kyc: dict[UUID, KycVerification] = {}
+    for verification in kyc_rows:
+        latest_kyc.setdefault(verification.borrower_id, verification)
+
+    validations: list[dict[str, object]] = []
+    debtors: dict[UUID, dict[str, object]] = {}
+    facilities: list[dict[str, object]] = []
+    collaterals: list[dict[str, object]] = []
+    for account, application, asset, borrower, branch, profile, agreement in rows:
+        verification = latest_kyc.get(borrower.id)
+        record_reference = f"{borrower.customer_reference}/{account.account_no}"
+        if verification is None or not verification.national_id_ciphertext:
+            validations.append(
+                {
+                    "level": "error",
+                    "code": "SLIK_NIK_MISSING",
+                    "record": record_reference,
+                    "message": "NIK terverifikasi dan terenkripsi belum tersedia",
+                }
+            )
+            nik = ""
+        else:
+            from dogeapi.operations.kyc_service import decrypt_pii
+
+            nik = decrypt_pii(settings, verification.national_id_ciphertext)
+        if profile is None or not profile.dati_ii_code:
+            validations.append(
+                {
+                    "level": "error",
+                    "code": "SLIK_DATI_II_MISSING",
+                    "record": record_reference,
+                    "message": "Kode DATI II debitur wajib dilengkapi",
+                }
+            )
+        if profile is None or not profile.slik_subject_code:
+            validations.append(
+                {
+                    "level": "error",
+                    "code": "SLIK_SUBJECT_CODE_MISSING",
+                    "record": record_reference,
+                    "message": "Kode subjek SLIK wajib dilengkapi",
+                }
+            )
+        if verification is not None and verification.expires_at and verification.expires_at < datetime.now(UTC):
+            validations.append(
+                {
+                    "level": "error",
+                    "code": "SLIK_KYC_EXPIRED",
+                    "record": record_reference,
+                    "message": "KYC debitur kedaluwarsa",
+                }
+            )
+        debtors.setdefault(
+            borrower.id,
+            {
+                "operation": "C",
+                "cif": borrower.customer_reference,
+                "subject_code": profile.slik_subject_code if profile else "",
+                "nik": nik,
+                "legal_name": verification.legal_name if verification else borrower.full_name,
+                "birth_place": verification.birth_place if verification else "",
+                "birth_date": verification.birth_date.isoformat() if verification else "",
+                "gender": verification.gender if verification else "",
+                "address": verification.address if verification else "",
+                "dati_ii_code": profile.dati_ii_code if profile else "",
+                "branch_code": branch.code,
+            },
+        )
+        facilities.append(
+            {
+                "operation": "C",
+                "cif": borrower.customer_reference,
+                "account_no": account.account_no,
+                "agreement_no": agreement.sbg_number if agreement else application.application_no,
+                "agreement_date": agreement.signed_at.date().isoformat()
+                if agreement
+                else (account.disbursed_at.date().isoformat() if account.disbursed_at else ""),
+                "status": account.status,
+                "principal": account.principal_amount,
+                "outstanding": account.outstanding_principal,
+                "outstanding_fee": account.outstanding_fee,
+                "disbursed_at": account.disbursed_at,
+                "due_at": account.due_at,
+                "quality": "2"
+                if account.due_at and account.due_at.date() < period_end and account.outstanding_principal > 0
+                else "1",
+                "branch_code": branch.code,
+            }
+        )
+        collaterals.append(
+            {
+                "operation": "C",
+                "account_no": account.account_no,
+                "collateral_no": asset.asset_code,
+                "category": asset.category,
+                "brand": asset.brand or "",
+                "model": asset.model or "",
+                "condition_grade": asset.condition_grade or "",
+                "value": asset.indicative_value or 0,
+                "custody_status": asset.collateral_status,
+            }
+        )
+    outstanding_total = sum((Decimal(str(row["outstanding"])) for row in facilities), Decimal("0"))
+    validations.append(
+        {
+            "level": "info",
+            "code": "SLIK_RECONCILIATION",
+            "message": f"D01={len(debtors)} F01={len(facilities)} A01={len(collaterals)} outstanding={outstanding_total}",
+        }
+    )
+    preview = {
+        "segment_counts": {"D01": len(debtors), "F01": len(facilities), "A01": len(collaterals)},
+        "reconciliation": {
+            "facility_outstanding": str(outstanding_total),
+            "period_start": period_start.isoformat(),
+            "period_end": period_end.isoformat(),
+        },
+        "segments": ["D01_DEBITUR_INDIVIDUAL", "F01_FASILITAS_KREDIT", "A01_AGUNAN"],
+    }
+    sensitive = {"D01": list(debtors.values()), "F01": facilities, "A01": collaterals}
+    return preview, sensitive, validations
+
+
+async def export_regulatory_package(
+    session: AsyncSession, org_id: UUID, run_id: UUID, settings: Settings | None = None
+) -> tuple[bytes, str, str]:
     run = await session.scalar(
         select(RegulatoryReportRun).where(RegulatoryReportRun.org_id == org_id, RegulatoryReportRun.id == run_id)
     )
@@ -932,8 +1192,9 @@ async def export_regulatory_package(session: AsyncSession, org_id: UUID, run_id:
     if template is None:
         raise _not_found("Regulatory report template")
     source_url = str(template.mapping_schema.get("source_url") or "")
+    regulation = "SEOJK 11/SEOJK.01/2024" if template.report_type == "SLIK" else "SEOJK 17/SEOJK.06/2025"
     manifest = {
-        "regulation": "SEOJK 17/SEOJK.06/2025",
+        "regulation": regulation,
         "source_url": source_url,
         "template_code": template.code,
         "template_version": template.version,
@@ -948,13 +1209,23 @@ async def export_regulatory_package(session: AsyncSession, org_id: UUID, run_id:
     output = io.BytesIO()
     with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
-        _write_csv(archive, "1100_laporan_posisi_keuangan.csv", run.report_payload.get("trial_balance", []))
-        _write_csv(archive, "2100_rincian_penyaluran_pinjaman.csv", run.report_payload.get("form_2100", []))
-        _write_csv(archive, "9100_analisis_kesesuaian_aset_liabilitas.csv", run.report_payload.get("aging", []))
-        _write_csv(archive, "branch_reconciliation.csv", run.report_payload.get("branch_analytics", []))
+        archive.writestr("validation_results.json", json.dumps(run.validation_results, ensure_ascii=False, indent=2))
+        if template.report_type == "SLIK":
+            if not run.sensitive_payload_ciphertext:
+                raise HTTPException(status.HTTP_409_CONFLICT, "Encrypted SLIK snapshot is unavailable")
+            sensitive = _decrypt_regulatory_payload(settings or get_settings(), run.sensitive_payload_ciphertext)
+            _write_csv(archive, "D01_debitur_individual.csv", sensitive.get("D01", []))
+            _write_csv(archive, "F01_fasilitas_kredit.csv", sensitive.get("F01", []))
+            _write_csv(archive, "A01_agunan.csv", sensitive.get("A01", []))
+            _write_csv(archive, "segment_reconciliation.csv", [run.report_payload.get("reconciliation", {})])
+        else:
+            _write_csv(archive, "1100_laporan_posisi_keuangan.csv", run.report_payload.get("trial_balance", []))
+            _write_csv(archive, "2100_rincian_penyaluran_pinjaman.csv", run.report_payload.get("form_2100", []))
+            _write_csv(archive, "9100_analisis_kesesuaian_aset_liabilitas.csv", run.report_payload.get("aging", []))
+            _write_csv(archive, "branch_reconciliation.csv", run.report_payload.get("branch_analytics", []))
     content = output.getvalue()
     checksum = hashlib.sha256(content).hexdigest()
-    filename = f"OJK-{template.code}-{run.period_end.isoformat()}-R{run.revision}.zip"
+    filename = f"{template.report_type}-{template.code}-{run.period_end.isoformat()}-R{run.revision}.zip"
     return content, filename, checksum
 
 

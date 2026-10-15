@@ -120,6 +120,21 @@ Task:
 - [ ] REG-SLIK-106: file generator dan official validator integration test.
 - [ ] REG-SLIK-107: submission/host-to-host adapter setelah akses resmi tersedia.
 
+### Implementasi work package SLIK saat ini
+
+Fondasi generator internal sudah tersedia dengan baseline [SEOJK 11/SEOJK.01/2024](https://ojk.go.id/id/regulasi/Pages/Pelaporan-dan-Permintaan-Informasi-Debitur-Melalui-Sistem-Layanan-Informasi-Keuangan-11-SEOJK01-2024.aspx):
+
+- template memiliki tipe, kode, versi, tanggal efektif, mapping, rule, status, dan approval aktivasi;
+- report run memisahkan payload preview yang aman dari snapshot sensitif terenkripsi;
+- NIK berasal dari KYC terverifikasi, disimpan terenkripsi, dan tidak tampil pada response API/report payload biasa;
+- segmen kerja D01 debitur individual, F01 fasilitas kredit, dan A01 agunan dihasilkan dari satu snapshot;
+- validator memblokir NIK/KYC, kode DATI II, serta kode subjek SLIK yang belum lengkap;
+- jumlah record per segmen dan total outstanding direkonsiliasi;
+- sign-off maker-checker wajib sebelum paket ZIP dapat diekspor;
+- paket memuat manifest, validation results, tiga CSV segmen, rekonsiliasi, dan checksum response.
+
+Paket ini masih berstatus **work package terkendali** sampai kamus seluruh kolom, code set, aturan koreksi/hapus, penamaan file, dan validator kanal resmi milik pelapor telah diuji. Sistem tidak menandai file sebagai submitted dan belum mengirimkannya ke OJK.
+
 ## Keamanan dan separation of duty
 
 - Maker menyiapkan run dan menangani error.

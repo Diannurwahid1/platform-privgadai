@@ -7,7 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import func, select
 
-from dogeapi.deps import OrgIdDep, SessionDep, UserDep
+from dogeapi.deps import OrgIdDep, SessionDep, SettingsDep, UserDep
 from dogeapi.models import (
     AccountingPeriod,
     ApplicationStatusHistory,
@@ -689,22 +689,51 @@ async def create_regulatory_template(
     return ERPActionResult(id=item.id, status=item.status, message="Versioned regulatory template created")
 
 
+@router.post(
+    "/regulatory/templates/{template_id}/submit-for-activation",
+    response_model=ERPActionResult,
+    dependencies=[Depends(require_scope("org:master:write"))],
+)
+async def submit_regulatory_template_activation(
+    template_id: UUID,
+    data: ApprovalSubmitInput,
+    session: SessionDep,
+    org_id: OrgIdDep,
+    user: UserDep,
+) -> ERPActionResult:
+    await mvp_service.ensure_any_operational_role(session, org_id, user.id, {"ops_admin", "finance", "auditor"})
+    item = await erp_service.submit_regulatory_template_for_activation(
+        session, org_id, user.id, template_id, data.reason
+    )
+    await session.commit()
+    return ERPActionResult(id=item.id, status=item.status, message="Template submitted for independent activation")
+
+
 @router.get("/regulatory/runs")
 async def regulatory_runs(session: SessionDep, org_id: OrgIdDep, user: UserDep) -> list[dict[str, object]]:
     await mvp_service.ensure_any_operational_role(
         session, org_id, user.id, {"ops_admin", "branch_manager", "finance", "auditor"}
     )
-    rows = list(
-        await session.scalars(
-            select(RegulatoryReportRun)
+    rows = (
+        await session.execute(
+            select(RegulatoryReportRun, RegulatoryReportTemplate)
+            .join(
+                RegulatoryReportTemplate,
+                (RegulatoryReportTemplate.id == RegulatoryReportRun.template_id)
+                & (RegulatoryReportTemplate.org_id == org_id),
+            )
             .where(RegulatoryReportRun.org_id == org_id)
             .order_by(RegulatoryReportRun.created_at.desc())
         )
-    )
+    ).all()
     return [
         {
             "id": item.id,
             "template_id": item.template_id,
+            "report_type": template.report_type,
+            "template_code": template.code,
+            "template_name": template.name,
+            "template_version": template.version,
             "period_start": item.period_start,
             "period_end": item.period_end,
             "revision": item.revision,
@@ -714,7 +743,7 @@ async def regulatory_runs(session: SessionDep, org_id: OrgIdDep, user: UserDep) 
             "approved_by_user_id": item.approved_by_user_id,
             "approved_at": item.approved_at,
         }
-        for item in rows
+        for item, template in rows
     ]
 
 
@@ -725,12 +754,12 @@ async def regulatory_runs(session: SessionDep, org_id: OrgIdDep, user: UserDep) 
     dependencies=[Depends(require_scope("org:reports:read"))],
 )
 async def create_regulatory_run(
-    data: RegulatoryRunCreate, session: SessionDep, org_id: OrgIdDep, user: UserDep
+    data: RegulatoryRunCreate, session: SessionDep, settings: SettingsDep, org_id: OrgIdDep, user: UserDep
 ) -> ERPActionResult:
     await mvp_service.ensure_any_operational_role(
         session, org_id, user.id, {"ops_admin", "branch_manager", "finance", "auditor"}
     )
-    item = await erp_service.create_regulatory_run(session, org_id, user.id, data)
+    item = await erp_service.create_regulatory_run(session, org_id, user.id, data, settings)
     await session.commit()
     return ERPActionResult(id=item.id, status=item.status, message="Regulatory report draft generated; not submitted")
 
@@ -756,11 +785,13 @@ async def submit_regulatory_run(
 
 
 @router.get("/regulatory/runs/{run_id}/export")
-async def export_regulatory_run(run_id: UUID, session: SessionDep, org_id: OrgIdDep, user: UserDep) -> Response:
+async def export_regulatory_run(
+    run_id: UUID, session: SessionDep, settings: SettingsDep, org_id: OrgIdDep, user: UserDep
+) -> Response:
     await mvp_service.ensure_any_operational_role(
         session, org_id, user.id, {"ops_admin", "branch_manager", "finance", "auditor"}
     )
-    content, filename, checksum = await erp_service.export_regulatory_package(session, org_id, run_id)
+    content, filename, checksum = await erp_service.export_regulatory_package(session, org_id, run_id, settings)
     return Response(
         content=content,
         media_type="application/zip",

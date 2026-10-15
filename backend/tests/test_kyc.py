@@ -57,6 +57,9 @@ async def test_ktp_kyc_masks_nik_encrypts_document_and_enforces_checker(
     )
     assert verification.national_id_masked == "327301••••••0001"
     assert "3273010101900001" not in verification.nik_fingerprint
+    assert verification.national_id_ciphertext is not None
+    assert "3273010101900001" not in verification.national_id_ciphertext
+    assert kyc_service.decrypt_pii(settings, verification.national_id_ciphertext) == "3273010101900001"
 
     document = await kyc_service.store_document(
         db_session,

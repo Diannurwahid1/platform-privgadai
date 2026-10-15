@@ -94,8 +94,11 @@ Exit: semua command P0 memiliki event, kontrol approval, dan konfigurasi tervers
 - [ ] F7-02: OJK monthly templates, lineage, validation, reconciliation.
   - Baseline Formulir Lampiran II SEOJK 17/SEOJK.06/2025, snapshot GL/loan/aging, dan rekonsiliasi cabang tersedia; seluruh formulir profil dan kamus field resmi masih dilanjutkan.
 - [ ] F7-03: SLIK segment mapping, reference codes, validation.
+  - Snapshot terenkripsi D01/F01/A01, validasi KYC/NIK/DATI II/kode subjek, segment count, dan rekonsiliasi outstanding sudah tersedia.
+  - Kamus seluruh field, code set effective-dated, correction/delete semantics, dan uji validator resmi masih dilanjutkan.
 - [ ] F7-04: revision, review, sign-off, file generation, checksum.
   - Sign-off maker-checker dan paket ZIP bermanifest dengan Formulir 1100/2100/9100 serta checksum SHA-256 tersedia.
+  - Aktivasi template regulator juga memakai approval independen; paket SLIK menyimpan validation results dan segmen terenkripsi-at-rest.
 - [ ] F7-05: submission evidence/acknowledgement dan adapter resmi bila tersedia.
 - [ ] F7-06: health, financial, operational, risk dashboards dari governed metrics.
 

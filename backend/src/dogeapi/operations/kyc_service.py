@@ -41,6 +41,16 @@ def _fernet(settings: Settings) -> Fernet:
     return Fernet(derived)
 
 
+def encrypt_pii(settings: Settings, value: str) -> str:
+    """Encrypt a sensitive scalar for database persistence."""
+    return _fernet(settings).encrypt(value.encode()).decode()
+
+
+def decrypt_pii(settings: Settings, value: str) -> str:
+    """Decrypt a sensitive scalar only inside an authorized workflow."""
+    return _fernet(settings).decrypt(value.encode()).decode()
+
+
 async def _borrower(session: AsyncSession, org_id: UUID, borrower_id: UUID) -> Borrower:
     item = await session.scalar(select(Borrower).where(Borrower.org_id == org_id, Borrower.id == borrower_id))
     if item is None:
@@ -69,6 +79,7 @@ async def create_verification(
         borrower_id=borrower_id,
         initiated_by_user_id=actor_id,
         nik_fingerprint=fingerprint,
+        national_id_ciphertext=encrypt_pii(settings, data.nik),
         national_id_masked=_masked_nik(data.nik),
         legal_name=data.legal_name,
         birth_place=data.birth_place,

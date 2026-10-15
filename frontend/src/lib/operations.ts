@@ -420,6 +420,8 @@ export const createRegulatoryRun = (template_id: string, period_start: string, p
     method: "POST",
     json: { template_id, period_start, period_end },
   });
+export const submitRegulatoryTemplateActivation = (id: string, reason: string) =>
+  apiFetch<ActionResult>(`/v1/regulatory/templates/${id}/submit-for-activation`, { method: "POST", json: { reason } });
 export const submitRegulatoryRun = (id: string, reason: string) =>
   apiFetch<ActionResult>(`/v1/regulatory/runs/${id}/submit-for-approval`, {
     method: "POST",

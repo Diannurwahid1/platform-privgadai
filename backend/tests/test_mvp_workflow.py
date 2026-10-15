@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import io
+import zipfile
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -12,15 +14,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from dogeapi.models import (
     ApprovalRequest,
+    DebtorProfile,
     KycVerification,
     LoanApplication,
     Membership,
+    RegulatoryReportRun,
     RegulatoryReportTemplate,
     Role,
     User,
 )
 from dogeapi.operations import approval_service, mvp_service
+from dogeapi.operations.kyc_service import encrypt_pii
 from dogeapi.operations.state_machine import APPLICATION_TRANSITIONS, COLLATERAL_TRANSITIONS, can_transition
+from dogeapi.settings import Settings
 
 
 def test_state_machines_reject_shortcuts() -> None:
@@ -47,7 +53,9 @@ async def _register_and_switch(client: AsyncClient) -> tuple[dict[str, str], dic
     return base, {"Authorization": f"Bearer {switched.json()['access_token']}"}
 
 
-async def test_complete_mvp_workflow_is_tenant_scoped(client: AsyncClient, db_session: AsyncSession) -> None:
+async def test_complete_mvp_workflow_is_tenant_scoped(
+    client: AsyncClient, db_session: AsyncSession, settings: Settings
+) -> None:
     base_headers, headers = await _register_and_switch(client)
     today = datetime.now(UTC).date()
     period_start = today.replace(day=1)
@@ -178,6 +186,7 @@ async def test_complete_mvp_workflow_is_tenant_scoped(client: AsyncClient, db_se
             initiated_by_user_id=actor.id,
             reviewed_by_user_id=actor.id,
             nik_fingerprint="a" * 64,
+            national_id_ciphertext=encrypt_pii(settings, "3471010101900001"),
             national_id_masked="3471••••••0001",
             legal_name="NASABAH UJI",
             birth_place="Yogyakarta",
@@ -192,6 +201,16 @@ async def test_complete_mvp_workflow_is_tenant_scoped(client: AsyncClient, db_se
             expires_at=datetime.now(UTC) + timedelta(days=365),
         )
     )
+    debtor_profile = await db_session.scalar(
+        select(DebtorProfile).where(
+            DebtorProfile.org_id == application.org_id,
+            DebtorProfile.borrower_id == application.borrower_id,
+        )
+    )
+    assert debtor_profile is not None
+    debtor_profile.national_id_masked = "3471••••••0001"
+    debtor_profile.dati_ii_code = "3471"
+    debtor_profile.slik_subject_code = "I01"
     await db_session.flush()
 
     for next_status in ("under_review", "appraisal"):
@@ -420,6 +439,77 @@ async def test_complete_mvp_workflow_is_tenant_scoped(client: AsyncClient, db_se
     assert exported.headers["content-type"] == "application/zip"
     assert len(exported.headers["x-content-sha256"]) == 64
     assert exported.content.startswith(b"PK")
+    slik_template = await client.post(
+        "/v1/regulatory/templates",
+        json={
+            "report_type": "SLIK",
+            "code": "SLIK-TEST",
+            "name": "SLIK Segments Test",
+            "version": "SEOJK11-2024.1",
+            "effective_from": "2024-10-02",
+            "mapping_schema": {
+                "source_url": "https://ojk.go.id/id/regulasi/Pages/Pelaporan-dan-Permintaan-Informasi-Debitur-Melalui-Sistem-Layanan-Informasi-Keuangan-11-SEOJK01-2024.aspx"
+            },
+            "validation_rules": [],
+        },
+        headers=headers,
+    )
+    assert slik_template.status_code == 201, slik_template.text
+    slik_template_row = await db_session.get(RegulatoryReportTemplate, slik_template.json()["id"])
+    assert slik_template_row is not None
+    slik_activation = await client.post(
+        f"/v1/regulatory/templates/{slik_template.json()['id']}/submit-for-activation",
+        json={"reason": "Mapping SLIK direview terhadap SEOJK 11/SEOJK.01/2024"},
+        headers=headers,
+    )
+    assert slik_activation.status_code == 200, slik_activation.text
+    activation_approval = await db_session.get(ApprovalRequest, slik_activation.json()["id"])
+    assert activation_approval is not None
+    await approval_service.decide_approval(
+        db_session,
+        application.org_id,
+        activation_approval.id,
+        checker.id,
+        "approved",
+        "Sumber, versi, mapping, dan validation rule telah diperiksa",
+    )
+    assert slik_template_row.status == "active"
+    slik_run = await client.post(
+        "/v1/regulatory/runs",
+        json={
+            "template_id": slik_template.json()["id"],
+            "period_start": "2026-09-01",
+            "period_end": "2026-09-30",
+        },
+        headers=headers,
+    )
+    assert slik_run.status_code == 201, slik_run.text
+    slik_run_row = await db_session.get(RegulatoryReportRun, slik_run.json()["id"])
+    assert slik_run_row is not None
+    assert slik_run_row.status == "draft"
+    assert slik_run_row.report_payload["segment_counts"] == {"D01": 1, "F01": 1, "A01": 1}
+    assert "3471010101900001" not in str(slik_run_row.report_payload)
+    slik_signoff = await client.post(
+        f"/v1/regulatory/runs/{slik_run.json()['id']}/submit-for-approval",
+        json={"reason": "Segmen dan rekonsiliasi SLIK telah diperiksa"},
+        headers=headers,
+    )
+    assert slik_signoff.status_code == 200, slik_signoff.text
+    slik_approval = await db_session.get(ApprovalRequest, slik_signoff.json()["id"])
+    assert slik_approval is not None
+    await approval_service.decide_approval(
+        db_session,
+        application.org_id,
+        slik_approval.id,
+        checker.id,
+        "approved",
+        "D01, F01, A01 dan rekonsiliasi sesuai snapshot",
+    )
+    slik_export = await client.get(f"/v1/regulatory/runs/{slik_run.json()['id']}/export", headers=headers)
+    assert slik_export.status_code == 200, slik_export.text
+    with zipfile.ZipFile(io.BytesIO(slik_export.content)) as package:
+        assert {"D01_debitur_individual.csv", "F01_fasilitas_kredit.csv", "A01_agunan.csv"}.issubset(package.namelist())
+        assert "3471010101900001" in package.read("D01_debitur_individual.csv").decode("utf-8-sig")
     collections = await client.get("/v1/collections", headers=headers)
     assert collections.status_code == 200
     assert len(collections.json()) == 1
