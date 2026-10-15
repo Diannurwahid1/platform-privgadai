@@ -12,6 +12,7 @@ from dogeapi.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 from dogeapi.models.invitation import Invitation
 from dogeapi.models.membership import Membership, Role
 from dogeapi.models.oauth_account import OAuthAccount
+from dogeapi.models.operations import ApplicationStatusHistory, Asset, Borrower, Branch, LoanApplication
 from dogeapi.models.organization import Organization
 from dogeapi.models.subscription import Subscription
 from dogeapi.models.user import User
@@ -20,10 +21,15 @@ __all__ = (
     "AIMessage",
     "AIThread",
     "APIKey",
+    "ApplicationStatusHistory",
+    "Asset",
     "AuditLog",
     "AuthTokenStore",
     "Base",
+    "Borrower",
+    "Branch",
     "Invitation",
+    "LoanApplication",
     "Membership",
     "OAuthAccount",
     "Organization",

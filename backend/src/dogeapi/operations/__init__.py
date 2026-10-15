@@ -1,0 +1,1 @@
+"""PrivGadai partner operations module."""

@@ -21,6 +21,7 @@ from dogeapi.auth.password_reset import router as password_reset_router
 from dogeapi.auth.router import router as auth_router
 from dogeapi.auth.security import build_authx
 from dogeapi.exceptions import install_exception_handlers
+from dogeapi.operations.router import router as operations_router
 from dogeapi.organizations.router import router as orgs_router
 from dogeapi.settings import Settings, get_settings
 from dogeapi.token_store import create_token_store
@@ -128,6 +129,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(auth_router)
     app.include_router(password_reset_router)
     app.include_router(orgs_router)
+    app.include_router(operations_router)
 
     if settings.FEATURE_API_KEYS:
         from dogeapi.api_keys.router import router as api_keys_router
