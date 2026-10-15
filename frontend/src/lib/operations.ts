@@ -1,4 +1,4 @@
-import { apiFetch, apiUpload } from "@/lib/api";
+import { apiDownload, apiFetch, apiUpload } from "@/lib/api";
 
 export type BranchSummary = {
   id: string;
@@ -386,6 +386,7 @@ export const submitRegulatoryRun = (id: string, reason: string) =>
     method: "POST",
     json: { reason },
   });
+export const downloadRegulatoryRun = (id: string) => apiDownload(`/v1/regulatory/runs/${id}/export`);
 export const listCustomers = () => apiFetch<CustomerListItem[]>("/v1/customers");
 export const getCustomerDetail = (id: string) => apiFetch<CustomerDetail>(`/v1/customers/${id}`);
 export const getCustomerKyc = (id: string) => apiFetch<CustomerKyc>(`/v1/customers/${id}/kyc`);

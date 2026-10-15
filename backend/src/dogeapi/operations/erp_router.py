@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import func, select
 
 from dogeapi.deps import OrgIdDep, SessionDep, UserDep
@@ -693,6 +693,22 @@ async def submit_regulatory_run(
     item = await erp_service.submit_regulatory_run_for_approval(session, org_id, user.id, run_id, data.reason)
     await session.commit()
     return ERPActionResult(id=item.id, status=item.status, message="Regulatory report submitted for sign-off")
+
+
+@router.get("/regulatory/runs/{run_id}/export")
+async def export_regulatory_run(run_id: UUID, session: SessionDep, org_id: OrgIdDep, user: UserDep) -> Response:
+    await mvp_service.ensure_any_operational_role(
+        session, org_id, user.id, {"ops_admin", "branch_manager", "finance", "auditor"}
+    )
+    content, filename, checksum = await erp_service.export_regulatory_package(session, org_id, run_id)
+    return Response(
+        content=content,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "X-Content-SHA256": checksum,
+        },
+    )
 
 
 @router.get("/inventory-checks")

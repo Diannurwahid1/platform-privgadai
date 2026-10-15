@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import csv
+import hashlib
+import io
+import json
 import secrets
+import zipfile
 from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID
@@ -717,6 +722,15 @@ async def create_regulatory_run(
     validations: list[dict[str, object]] = []
     if template.status != "active":
         validations.append({"level": "warning", "code": "TEMPLATE_DRAFT", "message": "Template is not approved"})
+    loan_rows = (
+        await session.execute(
+            select(LoanAccount, LoanApplication, Asset)
+            .join(LoanApplication, LoanApplication.id == LoanAccount.application_id)
+            .join(Asset, Asset.application_id == LoanApplication.id)
+            .where(LoanAccount.org_id == org_id, LoanApplication.org_id == org_id, Asset.org_id == org_id)
+            .order_by(LoanAccount.account_no)
+        )
+    ).all()
     payload = jsonable_encoder(
         {
             "report_type": template.report_type,
@@ -726,6 +740,21 @@ async def create_regulatory_run(
             "period_end": data.period_end.isoformat(),
             "portfolio": report.loan_portfolio,
             "aging": report.aging,
+            "trial_balance": report.trial_balance,
+            "branch_analytics": report.branch_analytics,
+            "form_2100": [
+                {
+                    "account_no": account.account_no,
+                    "application_no": application.application_no,
+                    "loan_status": account.status,
+                    "asset_category": asset.category,
+                    "principal_amount": account.principal_amount,
+                    "outstanding_principal": account.outstanding_principal,
+                    "outstanding_fee": account.outstanding_fee,
+                    "due_at": account.due_at,
+                }
+                for account, application, asset in loan_rows
+            ],
             "generated_at": datetime.now(UTC).isoformat(),
             "submission_status": "not_submitted",
         }
@@ -743,6 +772,60 @@ async def create_regulatory_run(
     session.add(item)
     await session.flush()
     return item
+
+
+async def export_regulatory_package(session: AsyncSession, org_id: UUID, run_id: UUID) -> tuple[bytes, str, str]:
+    run = await session.scalar(
+        select(RegulatoryReportRun).where(RegulatoryReportRun.org_id == org_id, RegulatoryReportRun.id == run_id)
+    )
+    if run is None:
+        raise _not_found("Regulatory report run")
+    if run.status != "approved":
+        raise HTTPException(status.HTTP_409_CONFLICT, "Report package can only be exported after sign-off")
+    template = await session.scalar(
+        select(RegulatoryReportTemplate).where(
+            RegulatoryReportTemplate.org_id == org_id,
+            RegulatoryReportTemplate.id == run.template_id,
+        )
+    )
+    if template is None:
+        raise _not_found("Regulatory report template")
+    source_url = str(template.mapping_schema.get("source_url") or "")
+    manifest = {
+        "regulation": "SEOJK 17/SEOJK.06/2025",
+        "source_url": source_url,
+        "template_code": template.code,
+        "template_version": template.version,
+        "period_start": run.period_start.isoformat(),
+        "period_end": run.period_end.isoformat(),
+        "revision": run.revision,
+        "approval_id": str(run.approved_by_user_id),
+        "approved_at": run.approved_at.isoformat() if run.approved_at else None,
+        "submission_status": "not_submitted",
+        "notice": "Package kerja terversi; unggah hanya setelah validasi terhadap kanal dan kamus data OJK tenant.",
+    }
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
+        _write_csv(archive, "1100_laporan_posisi_keuangan.csv", run.report_payload.get("trial_balance", []))
+        _write_csv(archive, "2100_rincian_penyaluran_pinjaman.csv", run.report_payload.get("form_2100", []))
+        _write_csv(archive, "9100_analisis_kesesuaian_aset_liabilitas.csv", run.report_payload.get("aging", []))
+        _write_csv(archive, "branch_reconciliation.csv", run.report_payload.get("branch_analytics", []))
+    content = output.getvalue()
+    checksum = hashlib.sha256(content).hexdigest()
+    filename = f"OJK-{template.code}-{run.period_end.isoformat()}-R{run.revision}.zip"
+    return content, filename, checksum
+
+
+def _write_csv(archive: zipfile.ZipFile, name: str, rows: object) -> None:
+    normalized = rows if isinstance(rows, list) else []
+    buffer = io.StringIO(newline="")
+    if normalized and isinstance(normalized[0], dict):
+        fieldnames = list(normalized[0].keys())
+        writer = csv.DictWriter(buffer, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(normalized)
+    archive.writestr(name, buffer.getvalue().encode("utf-8-sig"))
 
 
 async def submit_regulatory_run_for_approval(

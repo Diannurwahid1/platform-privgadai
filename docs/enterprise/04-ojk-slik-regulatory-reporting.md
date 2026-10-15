@@ -16,7 +16,7 @@ Paket laporan yang dihasilkan aplikasi belum boleh disebut “sesuai OJK” samp
 
 1. [POJK Nomor 39 Tahun 2024 tentang Pergadaian](https://ojk.go.id/id/regulasi/Pages/POJK-39-Tahun-2024-Pergadaian.aspx) — perjanjian, penaksir, kualitas pinjaman, batas maksimum pemberian pinjaman, ekuitas, tingkat kesehatan, dan pelaporan.
 2. [POJK Nomor 29 Tahun 2025, perubahan POJK 39/2024](https://ojk.go.id/id/regulasi/Pages/POJK-29-Tahun-2025-Perubahan-atas-Peraturan-Otoritas-Jasa-Keuangan-Nomor-39-Tahun-2024-tentang-Pergadaian.aspx).
-3. [SEOJK Nomor 17/SEOJK.06/2025 tentang Laporan Bulanan Perusahaan Pergadaian](https://ojk.go.id/id/regulasi/Pages/SEOJK-17-SEOJK06-2025-Laporan-Bulanan-Perusahaan-Pergadaian-dan-Perusahaan-Pergadaian-Syariah.aspx) — berlaku 1 Desember 2025; lampiran dibedakan untuk konvensional, syariah, dan UUS.
+3. [SEOJK Nomor 17/SEOJK.06/2025 tentang Laporan Bulanan Perusahaan Pergadaian](https://ojk.go.id/id/regulasi/Pages/SEOJK-17-SEOJK06-2025-Laporan-Bulanan-Perusahaan-Pergadaian-dan-Perusahaan-Pergadaian-Syariah.aspx) — berlaku 1 Desember 2025; [PDF resminya](https://www.ojk.go.id/id/regulasi/Documents/Pages/SEOJK-17-SEOJK06-2025-Laporan-Bulanan-Perusahaan-Pergadaian-dan-Perusahaan-Pergadaian-Syariah/SEOJK%2017-SEOJK06-2025%20Laporan%20Bulanan%20Perusahaan%20Pergadaian%20dan%20Perusahaan%20Pergadaian%20Syariah.pdf) menetapkan Formulir 0000, 0020, 0030, 0035, 0036, 0041, 0043, 0050, 1100, 1200, 1300, 2100, 2200, 2300, 4100, 5100, 6100, 7100, 8100, dan 9100 pada Lampiran II untuk perusahaan konvensional.
 4. [SEOJK Nomor 30/SEOJK.06/2025 tentang Perizinan, Persetujuan, dan Pelaporan Elektronik](https://ojk.go.id/id/regulasi/Pages/SEOJK-30-SEOJK06-2025-Perizinan,-Persetujuan,-dan-Pelaporan-secara-Elektronik-Perusahaan-Pergadaian-dan-Perusahaan-Pergadai.aspx) — self-assessment, verifikasi oleh pejabat berbeda, dokumen sumber, kanal elektronik, dan fallback.
 5. [SEOJK Nomor 11/SEOJK.01/2024 tentang Pelaporan dan Permintaan Informasi Debitur melalui SLIK](https://ojk.go.id/id/regulasi/Pages/Pelaporan-dan-Permintaan-Informasi-Debitur-Melalui-Sistem-Layanan-Informasi-Keuangan-11-SEOJK01-2024.aspx) — pedoman, segmen, referensi, dan opsi host-to-host.
 6. [POJK Nomor 11 Tahun 2024, perubahan kedua pelaporan SLIK](https://ojk.go.id/id/regulasi/Pages/Perubahan-Kedua-POJK-Nomor-18-2017-tentang-Pelaporan-dan-Permintaan-Informasi-Debitur-melalui-SLIK.aspx).
@@ -50,6 +50,8 @@ OPEN_PERIOD
 ```
 
 Setiap run immutable. Koreksi membuat revision baru dengan hubungan ke revision sebelumnya.
+
+Run yang telah mendapat sign-off dapat diekspor sebagai paket ZIP deterministik berisi manifest regulasi, versi template, periode, revision, identitas sign-off, status `not_submitted`, CSV Formulir 1100/2100/9100, rekonsiliasi cabang, dan checksum SHA-256 pada response. File tetap berstatus paket kerja sampai validator dan kanal OJK tenant menerbitkan acknowledgement.
 
 ### Validation workbench
 

@@ -361,6 +361,11 @@ async def test_complete_mvp_workflow_is_tenant_scoped(client: AsyncClient, db_se
         "approved",
         "Angka, mapping, dan validation evidence telah diperiksa",
     )
+    exported = await client.get(f"/v1/regulatory/runs/{report_run.json()['id']}/export", headers=headers)
+    assert exported.status_code == 200, exported.text
+    assert exported.headers["content-type"] == "application/zip"
+    assert len(exported.headers["x-content-sha256"]) == 64
+    assert exported.content.startswith(b"PK")
     collections = await client.get("/v1/collections", headers=headers)
     assert collections.status_code == 200
     assert len(collections.json()) == 1

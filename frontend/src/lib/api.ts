@@ -93,3 +93,20 @@ export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
   }
   return (await response.json()) as T;
 }
+
+export async function apiDownload(path: string): Promise<void> {
+  const response = await fetch(`${BFF_PREFIX}${path}`, { credentials: "include" });
+  if (!response.ok) {
+    let detail = response.statusText;
+    try { detail = (await response.json())?.detail ?? detail; } catch {}
+    throw { status: response.status, detail } as ApiError;
+  }
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const fileName = disposition.match(/filename="?([^";]+)"?/)?.[1] ?? "regulatory-package.zip";
+  const url = URL.createObjectURL(await response.blob());
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}

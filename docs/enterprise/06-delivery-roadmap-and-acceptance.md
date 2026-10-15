@@ -56,6 +56,7 @@ Exit: happy path dan negative path tervalidasi end-to-end tanpa perubahan status
 - [ ] F4-02: pickup scheduling dan proof of handover.
 - [ ] F4-03: custody receive/QC/store/move/release.
 - [ ] F4-04: stock opname blind count/recount/discrepancy.
+  - Workbench register per vault, observasi per agunan, variance, penguncian submit, dan checker sudah tersedia; blind assignment serta recount terpisah masih dilanjutkan.
 - [ ] F4-05: chain-of-custody event dan reconciliation.
 
 Exit: lokasi dan status setiap agunan dapat direkonstruksi; selisih tidak dapat ditutup tanpa bukti dan approval.
@@ -88,8 +89,10 @@ Exit: semua command P0 memiliki event, kontrol approval, dan konfigurasi tervers
 
 - [ ] F7-01: reporting calendar dan obligation profile.
 - [ ] F7-02: OJK monthly templates, lineage, validation, reconciliation.
+  - Baseline Formulir Lampiran II SEOJK 17/SEOJK.06/2025, snapshot GL/loan/aging, dan rekonsiliasi cabang tersedia; seluruh formulir profil dan kamus field resmi masih dilanjutkan.
 - [ ] F7-03: SLIK segment mapping, reference codes, validation.
 - [ ] F7-04: revision, review, sign-off, file generation, checksum.
+  - Sign-off maker-checker dan paket ZIP bermanifest dengan Formulir 1100/2100/9100 serta checksum SHA-256 tersedia.
 - [ ] F7-05: submission evidence/acknowledgement dan adapter resmi bila tersedia.
 - [ ] F7-06: health, financial, operational, risk dashboards dari governed metrics.
 
