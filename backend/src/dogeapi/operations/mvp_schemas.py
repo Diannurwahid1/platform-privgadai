@@ -175,6 +175,22 @@ class CustodyEventCreate(BaseModel):
     condition_note: str | None = Field(default=None, max_length=2000)
 
 
+class CustodyMovementCreate(BaseModel):
+    application_id: UUID
+    to_location_id: UUID
+    reason: str = Field(min_length=5, max_length=2000)
+
+
+class CustodyMovementDispatch(BaseModel):
+    seal_out: str = Field(min_length=3, max_length=80)
+    note: str = Field(min_length=3, max_length=2000)
+
+
+class CustodyMovementReceive(BaseModel):
+    seal_in: str = Field(min_length=3, max_length=80)
+    note: str = Field(min_length=3, max_length=2000)
+
+
 class CustodyLocationCreate(BaseModel):
     branch_id: UUID
     code: str = Field(min_length=2, max_length=40)

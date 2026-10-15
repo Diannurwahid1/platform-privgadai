@@ -301,6 +301,54 @@ class CustodyEvent(UUIDPrimaryKeyMixin, Base):
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
+class CustodyMovement(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "custody_movements"
+    __table_args__ = (
+        UniqueConstraint("org_id", "movement_no", name="uq_custody_movement_number"),
+        ForeignKeyConstraint(
+            ["org_id", "application_id"], ["loan_applications.org_id", "loan_applications.id"], ondelete="RESTRICT"
+        ),
+        ForeignKeyConstraint(
+            ["org_id", "from_location_id"],
+            ["custody_locations.org_id", "custody_locations.id"],
+            name="fk_movement_from_location",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["org_id", "to_location_id"],
+            ["custody_locations.org_id", "custody_locations.id"],
+            name="fk_movement_to_location",
+            ondelete="RESTRICT",
+        ),
+    )
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    application_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False, index=True)
+    movement_no: Mapped[str] = mapped_column(String(50), nullable=False)
+    from_location_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    to_location_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    requested_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    dispatched_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+    received_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+    status: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="requested", server_default="requested", index=True
+    )
+    reason: Mapped[str] = mapped_column(Text(), nullable=False)
+    seal_out: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    seal_in: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    dispatch_note: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    receipt_note: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    dispatched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class SettlementVerification(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "settlement_verifications"
     __table_args__ = (

@@ -27,6 +27,7 @@ from dogeapi.models import (
     Consent,
     CustodyEvent,
     CustodyLocation,
+    CustodyMovement,
     CustomerAcceptance,
     DebtorProfile,
     EvidenceFile,
@@ -53,6 +54,7 @@ from dogeapi.operations.mvp_schemas import (
     CollateralTimeline,
     CustodyEventCreate,
     CustodyLocationCreate,
+    CustodyMovementCreate,
     EvidenceCreate,
     IncidentCreate,
     LoanProductCreate,
@@ -775,6 +777,187 @@ async def create_custody_event(
         data.event_type.replace("_", " ").title(),
         data.condition_note,
         {"location_id": str(location.id), "location": location.name},
+    )
+    await session.flush()
+    return item
+
+
+async def list_custody_movements(session: AsyncSession, org_id: UUID) -> list[dict[str, object]]:
+    rows = list(
+        await session.scalars(
+            select(CustodyMovement)
+            .where(CustodyMovement.org_id == org_id)
+            .order_by(CustodyMovement.created_at.desc())
+            .limit(200)
+        )
+    )
+    return [
+        {
+            "id": item.id,
+            "movement_no": item.movement_no,
+            "application_id": item.application_id,
+            "from_location_id": item.from_location_id,
+            "to_location_id": item.to_location_id,
+            "status": item.status,
+            "reason": item.reason,
+            "seal_out": item.seal_out,
+            "seal_in": item.seal_in,
+            "requested_by_user_id": item.requested_by_user_id,
+            "dispatched_by_user_id": item.dispatched_by_user_id,
+            "received_by_user_id": item.received_by_user_id,
+            "created_at": item.created_at,
+            "dispatched_at": item.dispatched_at,
+            "received_at": item.received_at,
+        }
+        for item in rows
+    ]
+
+
+async def request_custody_movement(
+    session: AsyncSession, org_id: UUID, actor_id: UUID, data: CustodyMovementCreate
+) -> CustodyMovement:
+    application = await get_application(session, org_id, data.application_id)
+    await ensure_operational_access(
+        session, org_id, actor_id, application.branch_id, {"ops_admin", "branch_manager", "custodian"}
+    )
+    asset = await _get_asset(session, org_id, application.id)
+    if asset.collateral_status != "stored":
+        raise _conflict("Only stored collateral can be moved")
+    latest = await session.scalar(
+        select(CustodyEvent)
+        .where(CustodyEvent.org_id == org_id, CustodyEvent.application_id == application.id)
+        .order_by(CustodyEvent.occurred_at.desc())
+        .limit(1)
+    )
+    destination = await session.scalar(
+        select(CustodyLocation).where(
+            CustodyLocation.org_id == org_id, CustodyLocation.id == data.to_location_id, CustodyLocation.is_active
+        )
+    )
+    if latest is None or destination is None:
+        raise _not_found("Active custody location")
+    if latest.location_id == destination.id:
+        raise _conflict("Destination must differ from current custody location")
+    active = await session.scalar(
+        select(CustodyMovement).where(
+            CustodyMovement.org_id == org_id,
+            CustodyMovement.application_id == application.id,
+            CustodyMovement.status.in_({"requested", "in_transit"}),
+        )
+    )
+    if active is not None:
+        raise _conflict("Collateral already has an active movement")
+    item = CustodyMovement(
+        org_id=org_id,
+        application_id=application.id,
+        movement_no=f"MOV-{datetime.now(UTC):%y%m%d}-{secrets.token_hex(3).upper()}",
+        from_location_id=latest.location_id,
+        to_location_id=destination.id,
+        requested_by_user_id=actor_id,
+        reason=data.reason,
+    )
+    session.add(item)
+    _add_collateral_event(
+        session,
+        org_id,
+        application.id,
+        actor_id,
+        "movement_requested",
+        "Custody movement requested",
+        data.reason,
+        {
+            "movement_id": str(item.id),
+            "from_location_id": str(latest.location_id),
+            "to_location_id": str(destination.id),
+        },
+    )
+    await session.flush()
+    return item
+
+
+async def dispatch_custody_movement(
+    session: AsyncSession, org_id: UUID, actor_id: UUID, movement_id: UUID, seal: str, note: str
+) -> CustodyMovement:
+    item = await session.scalar(
+        select(CustodyMovement)
+        .where(CustodyMovement.org_id == org_id, CustodyMovement.id == movement_id)
+        .with_for_update()
+    )
+    if item is None:
+        raise _not_found("Custody movement")
+    if item.status != "requested":
+        raise _conflict("Movement is not ready for dispatch")
+    location = await session.scalar(
+        select(CustodyLocation).where(CustodyLocation.org_id == org_id, CustodyLocation.id == item.from_location_id)
+    )
+    await ensure_operational_access(
+        session, org_id, actor_id, location.branch_id, {"ops_admin", "branch_manager", "custodian"}
+    )
+    item.status = "in_transit"
+    item.seal_out = seal
+    item.dispatch_note = note
+    item.dispatched_by_user_id = actor_id
+    item.dispatched_at = datetime.now(UTC)
+    _add_collateral_event(
+        session,
+        org_id,
+        item.application_id,
+        actor_id,
+        "custody_dispatched",
+        "Custody transfer dispatched",
+        note,
+        {"movement_id": str(item.id), "seal": seal},
+    )
+    await session.flush()
+    return item
+
+
+async def receive_custody_movement(
+    session: AsyncSession, org_id: UUID, actor_id: UUID, movement_id: UUID, seal: str, note: str
+) -> CustodyMovement:
+    item = await session.scalar(
+        select(CustodyMovement)
+        .where(CustodyMovement.org_id == org_id, CustodyMovement.id == movement_id)
+        .with_for_update()
+    )
+    if item is None:
+        raise _not_found("Custody movement")
+    if item.status != "in_transit":
+        raise _conflict("Movement is not in transit")
+    if actor_id in {item.requested_by_user_id, item.dispatched_by_user_id}:
+        raise _conflict("Receiver must be different from requester and dispatcher")
+    if seal != item.seal_out:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Inbound seal does not match outbound seal")
+    location = await session.scalar(
+        select(CustodyLocation).where(CustodyLocation.org_id == org_id, CustodyLocation.id == item.to_location_id)
+    )
+    await ensure_operational_access(
+        session, org_id, actor_id, location.branch_id, {"ops_admin", "branch_manager", "custodian"}
+    )
+    item.status = "received"
+    item.seal_in = seal
+    item.receipt_note = note
+    item.received_by_user_id = actor_id
+    item.received_at = datetime.now(UTC)
+    session.add(
+        CustodyEvent(
+            org_id=org_id,
+            application_id=item.application_id,
+            location_id=item.to_location_id,
+            actor_user_id=actor_id,
+            event_type="stored",
+            condition_note=note,
+        )
+    )
+    _add_collateral_event(
+        session,
+        org_id,
+        item.application_id,
+        actor_id,
+        "custody_moved",
+        "Custody transfer received",
+        note,
+        {"movement_id": str(item.id), "seal": seal, "location_id": str(item.to_location_id)},
     )
     await session.flush()
     return item

@@ -306,6 +306,10 @@ export type AccountingPeriod = {
   id: string; period_start: string; period_end: string; status: string; close_reason: string | null;
   closed_by_user_id: string | null; closed_at: string | null;
 };
+export type CustodyMovement = {
+  id: string; movement_no: string; application_id: string; from_location_id: string; to_location_id: string;
+  status: string; reason: string; seal_out: string | null; seal_in: string | null; created_at: string;
+};
 
 export const listBranches = () => apiFetch<BranchItem[]>("/v1/master/branches");
 export const listAssetCategories = () =>
@@ -352,6 +356,13 @@ export const transitionPickup = (pickupId: string, to_status: string) =>
   });
 export const createCustodyEvent = (json: Record<string, unknown>) =>
   apiFetch<ActionResult>("/v1/custody/events", { method: "POST", json });
+export const listCustodyMovements = () => apiFetch<CustodyMovement[]>("/v1/custody/movements");
+export const requestCustodyMovement = (json: Record<string, unknown>) =>
+  apiFetch<ActionResult>("/v1/custody/movements", { method: "POST", json });
+export const dispatchCustodyMovement = (id: string, seal_out: string, note: string) =>
+  apiFetch<ActionResult>(`/v1/custody/movements/${id}/dispatch`, { method: "POST", json: { seal_out, note } });
+export const receiveCustodyMovement = (id: string, seal_in: string, note: string) =>
+  apiFetch<ActionResult>(`/v1/custody/movements/${id}/receive`, { method: "POST", json: { seal_in, note } });
 export const disburseLoan = (applicationId: string, external_reference: string) =>
   apiFetch<ActionResult>(`/v1/loans/${applicationId}/disburse`, {
     method: "POST",

@@ -22,6 +22,9 @@ from dogeapi.operations.mvp_schemas import (
     CollateralTimeline,
     CustodyEventCreate,
     CustodyLocationCreate,
+    CustodyMovementCreate,
+    CustodyMovementDispatch,
+    CustodyMovementReceive,
     DisbursementCreate,
     EvidenceCreate,
     FieldTaskItem,
@@ -303,6 +306,49 @@ async def create_custody_event(
     await session.commit()
     return ActionResult(
         id=item.id, application_id=item.application_id, status=item.event_type, message="Custody event recorded"
+    )
+
+
+@router.get("/custody/movements")
+async def custody_movements(session: SessionDep, org_id: OrgIdDep, user: UserDep) -> list[dict[str, object]]:
+    await mvp_service.ensure_any_operational_role(
+        session, org_id, user.id, {"ops_admin", "branch_manager", "custodian", "auditor"}
+    )
+    return await mvp_service.list_custody_movements(session, org_id)
+
+
+@router.post(
+    "/custody/movements", response_model=ActionResult, status_code=status.HTTP_201_CREATED, dependencies=[write_access]
+)
+async def request_custody_movement(
+    data: CustodyMovementCreate, session: SessionDep, org_id: OrgIdDep, user: UserDep
+) -> ActionResult:
+    item = await mvp_service.request_custody_movement(session, org_id, user.id, data)
+    await session.commit()
+    return ActionResult(
+        id=item.id, application_id=item.application_id, status=item.status, message="Custody movement requested"
+    )
+
+
+@router.post("/custody/movements/{movement_id}/dispatch", response_model=ActionResult, dependencies=[write_access])
+async def dispatch_custody_movement(
+    movement_id: UUID, data: CustodyMovementDispatch, session: SessionDep, org_id: OrgIdDep, user: UserDep
+) -> ActionResult:
+    item = await mvp_service.dispatch_custody_movement(session, org_id, user.id, movement_id, data.seal_out, data.note)
+    await session.commit()
+    return ActionResult(
+        id=item.id, application_id=item.application_id, status=item.status, message="Custody movement dispatched"
+    )
+
+
+@router.post("/custody/movements/{movement_id}/receive", response_model=ActionResult, dependencies=[write_access])
+async def receive_custody_movement(
+    movement_id: UUID, data: CustodyMovementReceive, session: SessionDep, org_id: OrgIdDep, user: UserDep
+) -> ActionResult:
+    item = await mvp_service.receive_custody_movement(session, org_id, user.id, movement_id, data.seal_in, data.note)
+    await session.commit()
+    return ActionResult(
+        id=item.id, application_id=item.application_id, status=item.status, message="Custody movement received"
     )
 
 

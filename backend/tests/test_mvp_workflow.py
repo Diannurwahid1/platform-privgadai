@@ -19,7 +19,7 @@ from dogeapi.models import (
     Role,
     User,
 )
-from dogeapi.operations import approval_service
+from dogeapi.operations import approval_service, mvp_service
 from dogeapi.operations.state_machine import APPLICATION_TRANSITIONS, COLLATERAL_TRANSITIONS, can_transition
 
 
@@ -91,6 +91,17 @@ async def test_complete_mvp_workflow_is_tenant_scoped(client: AsyncClient, db_se
         headers=headers,
     )
     assert location.status_code == 201, location.text
+    location_two = await client.post(
+        "/v1/master/custody-locations",
+        json={
+            "branch_id": branch.json()["id"],
+            "code": "VAULT-YGY-02",
+            "name": "Brankas Yogyakarta 2",
+            "location_type": "branch_vault",
+        },
+        headers=headers,
+    )
+    assert location_two.status_code == 201, location_two.text
     accounting_period = await client.post(
         "/v1/accounting/periods",
         json={"period_start": period_start.isoformat(), "period_end": period_end.isoformat()},
@@ -309,6 +320,36 @@ async def test_complete_mvp_workflow_is_tenant_scoped(client: AsyncClient, db_se
         "approved",
         "Hasil scan fisik dan seal sesuai register",
     )
+    movement = await client.post(
+        "/v1/custody/movements",
+        json={
+            "application_id": application_id,
+            "to_location_id": location_two.json()["id"],
+            "reason": "Redistribusi kapasitas vault",
+        },
+        headers=headers,
+    )
+    assert movement.status_code == 201, movement.text
+    dispatched = await client.post(
+        f"/v1/custody/movements/{movement.json()['id']}/dispatch",
+        json={"seal_out": "SEAL-001", "note": "Segel dipasang di bawah CCTV"},
+        headers=headers,
+    )
+    assert dispatched.status_code == 200, dispatched.text
+    with pytest.raises(HTTPException) as same_receiver:
+        await mvp_service.receive_custody_movement(
+            db_session, application.org_id, actor.id, movement.json()["id"], "SEAL-001", "Received"
+        )
+    assert same_receiver.value.status_code == 409
+    received = await mvp_service.receive_custody_movement(
+        db_session,
+        application.org_id,
+        checker.id,
+        movement.json()["id"],
+        "SEAL-001",
+        "Segel cocok dan kondisi barang utuh",
+    )
+    assert received.status == "received"
     disbursed = await client.post(
         f"/v1/loans/{application_id}/disburse",
         json={"external_reference": "DISB-TEST-001", "idempotency_key": "disbursement-test-001"},
