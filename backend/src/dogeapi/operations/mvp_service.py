@@ -757,6 +757,11 @@ async def create_custody_event(
     )
     if location is None:
         raise _not_found("Custody location")
+    if data.event_type == "release_authorized":
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Otorisasi pelepasan agunan hanya dapat diterbitkan melalui approval inbox",
+        )
     asset = await _get_asset(session, org_id, data.application_id)
     _set_collateral_status(asset, data.event_type)
     item = CustodyEvent(org_id=org_id, actor_user_id=actor_id, **data.model_dump())
@@ -889,8 +894,6 @@ async def verify_settlement(
     account.status = "settled"
     account.settled_at = datetime.now(UTC)
     asset = await _get_asset(session, org_id, data.application_id)
-    if asset.collateral_status == "stored":
-        _set_collateral_status(asset, "release_authorized")
     _add_collateral_event(
         session,
         org_id,
@@ -900,6 +903,53 @@ async def verify_settlement(
         "Settlement verified",
         event_metadata={"type": data.settlement_type, "reference": data.external_reference},
     )
+    if asset.collateral_status == "stored":
+        latest_custody = await session.scalar(
+            select(CustodyEvent)
+            .where(
+                CustodyEvent.org_id == org_id,
+                CustodyEvent.application_id == data.application_id,
+            )
+            .order_by(CustodyEvent.occurred_at.desc())
+            .limit(1)
+        )
+        if latest_custody is None:
+            raise _conflict("Lokasi custody aktif tidak ditemukan untuk proses pelepasan")
+        from dogeapi.operations import approval_service
+
+        await approval_service.request_approval(
+            session,
+            org_id=org_id,
+            branch_id=application.branch_id,
+            aggregate_type="custody_release",
+            aggregate_id=application.id,
+            aggregate_reference=application.application_no,
+            action="authorize_collateral_release",
+            requested_by=actor_id,
+            assigned_role="branch_manager",
+            reason="Pelunasan terverifikasi; agunan menunggu otorisasi pelepasan",
+            payload={
+                "application_id": str(application.id),
+                "loan_account_id": str(account.id),
+                "settlement_id": str(item.id),
+                "location_id": str(latest_custody.location_id),
+                "condition_note": "Release approved after verified settlement",
+                "settlement_reference": data.external_reference,
+                "settlement_amount": str(data.amount),
+            },
+            priority="high",
+            sla_hours=4,
+        )
+        _add_collateral_event(
+            session,
+            org_id,
+            data.application_id,
+            actor_id,
+            "release_requested",
+            "Release approval requested",
+            "Pelunasan terverifikasi dan menunggu checker independen.",
+            {"settlement_reference": data.external_reference},
+        )
     await session.flush()
     return item
 

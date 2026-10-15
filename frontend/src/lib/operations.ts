@@ -272,7 +272,7 @@ export type KycQueueItem = {
   reviewed_by_user_id: string | null; created_at: string; reviewed_at: string | null; expires_at: string | null;
 };
 export type ApprovalQueueItem = {
-  id: string; branch_id: string; aggregate_type: string; aggregate_id: string; aggregate_reference: string;
+  id: string; branch_id: string | null; aggregate_type: string; aggregate_id: string; aggregate_reference: string;
   action: string; version: number; requested_by_user_id: string; assigned_role: string; status: string;
   priority: string; request_reason: string; payload_snapshot: Record<string, unknown>; due_at: string | null;
   decided_by_user_id: string | null; decided_at: string | null; decision_reason: string | null; created_at: string;
@@ -361,6 +361,11 @@ export const createRegulatoryRun = (template_id: string, period_start: string, p
   apiFetch<ActionResult>("/v1/regulatory/runs", {
     method: "POST",
     json: { template_id, period_start, period_end },
+  });
+export const submitRegulatoryRun = (id: string, reason: string) =>
+  apiFetch<ActionResult>(`/v1/regulatory/runs/${id}/submit-for-approval`, {
+    method: "POST",
+    json: { reason },
   });
 export const listCustomers = () => apiFetch<CustomerListItem[]>("/v1/customers");
 export const getCustomerDetail = (id: string) => apiFetch<CustomerDetail>(`/v1/customers/${id}`);

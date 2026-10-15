@@ -28,6 +28,10 @@ class JournalReverseInput(BaseModel):
     idempotency_key: str = Field(min_length=8, max_length=100)
 
 
+class ApprovalSubmitInput(BaseModel):
+    reason: str = Field(min_length=5, max_length=1000)
+
+
 class CollectionNoteCreate(BaseModel):
     channel: str = Field(pattern="^(phone|whatsapp|visit|branch|email)$")
     note: str = Field(min_length=3, max_length=4000)

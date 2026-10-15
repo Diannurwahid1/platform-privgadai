@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 
 from dogeapi.deps import OrgIdDep, SessionDep, UserDep
@@ -32,6 +32,7 @@ from dogeapi.models import (
 )
 from dogeapi.operations import erp_service, mvp_service
 from dogeapi.operations.erp_schemas import (
+    ApprovalSubmitInput,
     CashboxFundInput,
     CollectionNoteCreate,
     ERPActionResult,
@@ -555,9 +556,11 @@ async def reverse_journal(
     user: UserDep,
 ) -> ERPActionResult:
     await mvp_service.ensure_any_operational_role(session, org_id, user.id, {"ops_admin", "finance"})
-    item = await erp_service.reverse_journal(session, org_id, user.id, journal_id, data.reason, data.idempotency_key)
+    item = await erp_service.request_journal_reversal(
+        session, org_id, user.id, journal_id, data.reason, data.idempotency_key
+    )
     await session.commit()
-    return ERPActionResult(id=item.id, status=item.status, message="Balanced reversal journal posted")
+    return ERPActionResult(id=item.id, status=item.status, message="Journal reversal submitted for checker approval")
 
 
 @router.get("/collections")
@@ -647,6 +650,8 @@ async def regulatory_runs(session: SessionDep, org_id: OrgIdDep, user: UserDep) 
             "status": item.status,
             "validation_results": item.validation_results,
             "report_payload": item.report_payload,
+            "approved_by_user_id": item.approved_by_user_id,
+            "approved_at": item.approved_at,
         }
         for item in rows
     ]
@@ -667,6 +672,26 @@ async def create_regulatory_run(
     item = await erp_service.create_regulatory_run(session, org_id, user.id, data)
     await session.commit()
     return ERPActionResult(id=item.id, status=item.status, message="Regulatory report draft generated; not submitted")
+
+
+@router.post(
+    "/regulatory/runs/{run_id}/submit-for-approval",
+    response_model=ERPActionResult,
+    dependencies=[Depends(require_scope("org:reports:read"))],
+)
+async def submit_regulatory_run(
+    run_id: UUID,
+    data: ApprovalSubmitInput,
+    session: SessionDep,
+    org_id: OrgIdDep,
+    user: UserDep,
+) -> ERPActionResult:
+    await mvp_service.ensure_any_operational_role(
+        session, org_id, user.id, {"ops_admin", "branch_manager", "finance", "auditor"}
+    )
+    item = await erp_service.submit_regulatory_run_for_approval(session, org_id, user.id, run_id, data.reason)
+    await session.commit()
+    return ERPActionResult(id=item.id, status=item.status, message="Regulatory report submitted for sign-off")
 
 
 @router.get("/inventory-checks")
@@ -725,7 +750,7 @@ async def submit_inventory_check(
     await mvp_service.ensure_any_operational_role(
         session, org_id, user.id, {"ops_admin", "branch_manager", "custodian"}
     )
-    item = await erp_service.submit_inventory_check(session, org_id, check_id, data)
+    item = await erp_service.submit_inventory_check(session, org_id, user.id, check_id, data)
     await session.commit()
     return ERPActionResult(id=item.id, status=item.status, message="Stock opname submitted for review")
 
@@ -738,7 +763,7 @@ async def submit_inventory_check(
 async def approve_inventory_check(
     check_id: UUID, session: SessionDep, org_id: OrgIdDep, user: UserDep
 ) -> ERPActionResult:
-    await mvp_service.ensure_any_operational_role(session, org_id, user.id, {"ops_admin", "branch_manager", "auditor"})
-    item = await erp_service.approve_inventory_check(session, org_id, user.id, check_id)
-    await session.commit()
-    return ERPActionResult(id=item.id, status=item.status, message="Stock opname approved by checker")
+    raise HTTPException(
+        status.HTTP_410_GONE,
+        "Gunakan approval inbox agar keputusan stock opname memiliki snapshot, alasan, dan audit event",
+    )

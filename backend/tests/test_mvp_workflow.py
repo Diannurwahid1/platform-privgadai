@@ -10,7 +10,15 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from dogeapi.models import ApprovalRequest, KycVerification, LoanApplication, User
+from dogeapi.models import (
+    ApprovalRequest,
+    KycVerification,
+    LoanApplication,
+    Membership,
+    RegulatoryReportTemplate,
+    Role,
+    User,
+)
 from dogeapi.operations import approval_service
 from dogeapi.operations.state_machine import APPLICATION_TRANSITIONS, COLLATERAL_TRANSITIONS, can_transition
 
@@ -203,6 +211,8 @@ async def test_complete_mvp_workflow_is_tenant_scoped(client: AsyncClient, db_se
     checker = User(email="mvp-checker@example.com", full_name="MVP Checker")
     db_session.add(checker)
     await db_session.flush()
+    db_session.add(Membership(user_id=checker.id, org_id=application.org_id, role=Role.ADMIN))
+    await db_session.flush()
     approved = await approval_service.decide_approval(
         db_session, application.org_id, approval.id, checker.id, "approved", "Nilai dan bukti appraisal sesuai"
     )
@@ -256,6 +266,36 @@ async def test_complete_mvp_workflow_is_tenant_scoped(client: AsyncClient, db_se
         headers=headers,
     )
     assert stored.status_code == 201, stored.text
+    stock_check = await client.post(
+        "/v1/inventory-checks",
+        json={"location_id": location.json()["id"]},
+        headers=headers,
+    )
+    assert stock_check.status_code == 201, stock_check.text
+    stock_submit = await client.post(
+        f"/v1/inventory-checks/{stock_check.json()['id']}/submit",
+        json={
+            "observations": [{"application_id": application_id, "observed_status": "stored", "note": "Seal matched"}]
+        },
+        headers=headers,
+    )
+    assert stock_submit.status_code == 200, stock_submit.text
+    stock_approval = await db_session.scalar(
+        select(ApprovalRequest).where(
+            ApprovalRequest.org_id == application.org_id,
+            ApprovalRequest.aggregate_type == "inventory_check",
+            ApprovalRequest.aggregate_id == stock_check.json()["id"],
+        )
+    )
+    assert stock_approval is not None
+    await approval_service.decide_approval(
+        db_session,
+        application.org_id,
+        stock_approval.id,
+        checker.id,
+        "approved",
+        "Hasil scan fisik dan seal sesuai register",
+    )
     disbursed = await client.post(
         f"/v1/loans/{application_id}/disburse",
         json={"external_reference": "DISB-TEST-001", "idempotency_key": "disbursement-test-001"},
@@ -276,6 +316,48 @@ async def test_complete_mvp_workflow_is_tenant_scoped(client: AsyncClient, db_se
     assert reports.status_code == 200, reports.text
     trial = reports.json()["trial_balance"]
     assert sum(float(row["debit"]) for row in trial) == sum(float(row["credit"]) for row in trial)
+    template = await client.post(
+        "/v1/regulatory/templates",
+        json={
+            "report_type": "OJK",
+            "code": "LAPBUL-TEST",
+            "name": "Laporan Bulanan Pengujian",
+            "version": "2026.1",
+            "effective_from": "2026-01-01",
+            "mapping_schema": {"portfolio": "loan_portfolio"},
+            "validation_rules": [],
+        },
+        headers=headers,
+    )
+    assert template.status_code == 201, template.text
+    template_row = await db_session.scalar(
+        select(RegulatoryReportTemplate).where(RegulatoryReportTemplate.id == template.json()["id"])
+    )
+    assert template_row is not None
+    template_row.status = "active"
+    await db_session.flush()
+    report_run = await client.post(
+        "/v1/regulatory/runs",
+        json={"template_id": template.json()["id"], "period_start": "2026-09-01", "period_end": "2026-09-30"},
+        headers=headers,
+    )
+    assert report_run.status_code == 201, report_run.text
+    signoff = await client.post(
+        f"/v1/regulatory/runs/{report_run.json()['id']}/submit-for-approval",
+        json={"reason": "Rekonsiliasi sumber data periode September selesai"},
+        headers=headers,
+    )
+    assert signoff.status_code == 200, signoff.text
+    regulatory_approval = await db_session.get(ApprovalRequest, signoff.json()["id"])
+    assert regulatory_approval is not None
+    await approval_service.decide_approval(
+        db_session,
+        application.org_id,
+        regulatory_approval.id,
+        checker.id,
+        "approved",
+        "Angka, mapping, dan validation evidence telah diperiksa",
+    )
     collections = await client.get("/v1/collections", headers=headers)
     assert collections.status_code == 200
     assert len(collections.json()) == 1
@@ -305,6 +387,24 @@ async def test_complete_mvp_workflow_is_tenant_scoped(client: AsyncClient, db_se
     assert repeated_settlement.status_code == 201, repeated_settlement.text
     finance_after = await client.get("/v1/finance/overview", headers=headers)
     assert float(finance_after.json()["outstanding_principal"]) == 0
+
+    release_approval = await db_session.scalar(
+        select(ApprovalRequest).where(
+            ApprovalRequest.org_id == application.org_id,
+            ApprovalRequest.aggregate_type == "custody_release",
+            ApprovalRequest.aggregate_id == application.id,
+            ApprovalRequest.status == "pending",
+        )
+    )
+    assert release_approval is not None
+    await approval_service.decide_approval(
+        db_session,
+        application.org_id,
+        release_approval.id,
+        checker.id,
+        "approved",
+        "Settlement dan identitas penerima telah diverifikasi",
+    )
 
     passport = await client.get(f"/v1/collateral/{application_id}/timeline", headers=headers)
     assert passport.status_code == 200

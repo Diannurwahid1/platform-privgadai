@@ -30,7 +30,7 @@ class ApprovalRequest(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     org_id: Mapped[uuid.UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    branch_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False, index=True)
+    branch_id: Mapped[uuid.UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True, index=True)
     aggregate_type: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
     aggregate_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False, index=True)
     aggregate_reference: Mapped[str] = mapped_column(String(80), nullable=False)

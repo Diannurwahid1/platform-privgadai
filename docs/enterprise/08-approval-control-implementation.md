@@ -20,10 +20,12 @@ Aturan yang sudah ditegakkan di service:
 | Command | Target checker | Kondisi |
 | --- | --- | --- |
 | Finalisasi appraisal | Branch manager/reviewer | Tersedia |
-| Persetujuan stock opname | Branch manager/auditor | Berikutnya |
-| Otorisasi pelepasan agunan | Branch manager/custody supervisor | Berikutnya |
-| Reversal jurnal | Finance supervisor | Berikutnya |
-| Sign-off laporan regulator | Compliance/pejabat berwenang | Berikutnya |
+| Persetujuan stock opname | Branch manager | Tersedia melalui approval inbox |
+| Otorisasi pelepasan agunan | Branch manager | Tersedia otomatis setelah pelunasan terverifikasi |
+| Reversal jurnal | Finance | Tersedia melalui approval inbox |
+| Sign-off laporan regulator | Auditor | Tersedia melalui approval inbox |
+
+Checker anggota biasa harus mempunyai `staff_assignment` aktif dengan peran yang dituju. Owner dan admin tenant dapat melakukan keputusan, tetapi tetap terkena larangan maker menjadi checker. Approval organisasi seperti laporan regulator tidak dipaksa memakai cabang semu.
 
 ## Acceptance evidence
 

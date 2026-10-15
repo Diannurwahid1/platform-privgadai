@@ -8,10 +8,12 @@ from decimal import Decimal
 from uuid import UUID
 
 from fastapi import HTTPException, status
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dogeapi.models import (
+    ApprovalRequest,
     Asset,
     Branch,
     Cashbox,
@@ -200,6 +202,64 @@ async def reverse_journal(
     original.status = "reversed"
     await session.flush()
     return reversal
+
+
+async def request_journal_reversal(
+    session: AsyncSession,
+    org_id: UUID,
+    actor_id: UUID,
+    journal_id: UUID,
+    reason: str,
+    idempotency_key: str,
+) -> ApprovalRequest:
+    original = await session.scalar(
+        select(JournalEntry).where(JournalEntry.org_id == org_id, JournalEntry.id == journal_id)
+    )
+    if original is None:
+        raise _not_found("Journal entry")
+    if original.reversal_of_id is not None or original.status == "reversed":
+        raise HTTPException(status.HTTP_409_CONFLICT, "Journal entry is not reversible")
+    if await session.scalar(
+        select(CashTransaction).where(
+            CashTransaction.org_id == org_id,
+            CashTransaction.journal_entry_id == original.id,
+        )
+    ):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Cash transaction journals must be reversed through their source transaction workflow",
+        )
+    branch_id = None
+    if original.application_id is not None:
+        branch_id = await session.scalar(
+            select(LoanApplication.branch_id).where(
+                LoanApplication.org_id == org_id,
+                LoanApplication.id == original.application_id,
+            )
+        )
+    from dogeapi.operations import approval_service
+
+    return await approval_service.request_approval(
+        session,
+        org_id=org_id,
+        branch_id=branch_id,
+        aggregate_type="journal_entry",
+        aggregate_id=original.id,
+        aggregate_reference=original.entry_no,
+        action="reverse_journal",
+        requested_by=actor_id,
+        assigned_role="finance",
+        reason=reason,
+        payload={
+            "journal_id": str(original.id),
+            "entry_no": original.entry_no,
+            "description": original.description,
+            "reason": reason,
+            "idempotency_key": idempotency_key,
+        },
+        priority="high",
+        sla_hours=4,
+    )
 
 
 async def fund_cashbox(
@@ -656,17 +716,19 @@ async def create_regulatory_run(
     validations: list[dict[str, object]] = []
     if template.status != "active":
         validations.append({"level": "warning", "code": "TEMPLATE_DRAFT", "message": "Template is not approved"})
-    payload = {
-        "report_type": template.report_type,
-        "template_code": template.code,
-        "template_version": template.version,
-        "period_start": data.period_start.isoformat(),
-        "period_end": data.period_end.isoformat(),
-        "portfolio": report.loan_portfolio,
-        "aging": report.aging,
-        "generated_at": datetime.now(UTC).isoformat(),
-        "submission_status": "not_submitted",
-    }
+    payload = jsonable_encoder(
+        {
+            "report_type": template.report_type,
+            "template_code": template.code,
+            "template_version": template.version,
+            "period_start": data.period_start.isoformat(),
+            "period_end": data.period_end.isoformat(),
+            "portfolio": report.loan_portfolio,
+            "aging": report.aging,
+            "generated_at": datetime.now(UTC).isoformat(),
+            "submission_status": "not_submitted",
+        }
+    )
     item = RegulatoryReportRun(
         org_id=org_id,
         template_id=template.id,
@@ -680,6 +742,56 @@ async def create_regulatory_run(
     session.add(item)
     await session.flush()
     return item
+
+
+async def submit_regulatory_run_for_approval(
+    session: AsyncSession, org_id: UUID, actor_id: UUID, run_id: UUID, reason: str
+) -> ApprovalRequest:
+    report = await session.scalar(
+        select(RegulatoryReportRun)
+        .where(RegulatoryReportRun.org_id == org_id, RegulatoryReportRun.id == run_id)
+        .with_for_update()
+    )
+    if report is None:
+        raise _not_found("Regulatory report run")
+    if report.status != "draft":
+        raise HTTPException(status.HTTP_409_CONFLICT, "Only a valid draft can be submitted for sign-off")
+    if any(result.get("level") == "error" for result in report.validation_results):
+        raise HTTPException(status.HTTP_409_CONFLICT, "Validation errors must be resolved before sign-off")
+    template = await session.scalar(
+        select(RegulatoryReportTemplate).where(
+            RegulatoryReportTemplate.org_id == org_id,
+            RegulatoryReportTemplate.id == report.template_id,
+        )
+    )
+    if template is None:
+        raise _not_found("Regulatory report template")
+    report.status = "pending_approval"
+    from dogeapi.operations import approval_service
+
+    return await approval_service.request_approval(
+        session,
+        org_id=org_id,
+        branch_id=None,
+        aggregate_type="regulatory_report",
+        aggregate_id=report.id,
+        aggregate_reference=f"{template.code}/{report.period_end.isoformat()}/R{report.revision}",
+        action="sign_off_regulatory_report",
+        requested_by=actor_id,
+        assigned_role="auditor",
+        reason=reason,
+        payload={
+            "template_code": template.code,
+            "template_version": template.version,
+            "report_type": template.report_type,
+            "period_start": report.period_start.isoformat(),
+            "period_end": report.period_end.isoformat(),
+            "revision": report.revision,
+            "validation_results": report.validation_results,
+        },
+        priority="high",
+        sla_hours=8,
+    )
 
 
 async def create_inventory_check(
@@ -697,7 +809,7 @@ async def create_inventory_check(
 
 
 async def submit_inventory_check(
-    session: AsyncSession, org_id: UUID, check_id: UUID, data: InventoryCheckSubmit
+    session: AsyncSession, org_id: UUID, actor_id: UUID, check_id: UUID, data: InventoryCheckSubmit
 ) -> InventoryCheck:
     item = await session.scalar(
         select(InventoryCheck).where(InventoryCheck.org_id == org_id, InventoryCheck.id == check_id)
@@ -725,6 +837,47 @@ async def submit_inventory_check(
         )
     item.status = "submitted"
     await session.flush()
+    location = await session.scalar(
+        select(CustodyLocation).where(
+            CustodyLocation.org_id == org_id,
+            CustodyLocation.id == item.location_id,
+        )
+    )
+    if location is None:
+        raise _not_found("Custody location")
+    variance_count = int(
+        (
+            await session.scalar(
+                select(func.count(InventoryCheckItem.id)).where(
+                    InventoryCheckItem.org_id == org_id,
+                    InventoryCheckItem.inventory_check_id == item.id,
+                    InventoryCheckItem.result == "variance",
+                )
+            )
+        )
+        or 0
+    )
+    from dogeapi.operations import approval_service
+
+    await approval_service.request_approval(
+        session,
+        org_id=org_id,
+        branch_id=location.branch_id,
+        aggregate_type="inventory_check",
+        aggregate_id=item.id,
+        aggregate_reference=f"STOCK-{str(item.id)[:8].upper()}",
+        action="approve_inventory_check",
+        requested_by=actor_id,
+        assigned_role="branch_manager",
+        reason="Hasil stock opname menunggu review independen",
+        payload={
+            "location_id": str(item.location_id),
+            "observation_count": len(data.observations),
+            "variance_count": variance_count,
+        },
+        priority="high" if variance_count else "normal",
+        sla_hours=4,
+    )
     return item
 
 
