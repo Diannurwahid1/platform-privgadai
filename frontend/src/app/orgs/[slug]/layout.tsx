@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import {
@@ -196,15 +197,10 @@ function OrgChrome({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-background">
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-[248px] flex-col overflow-hidden bg-[linear-gradient(165deg,var(--pg-navy-950),var(--pg-navy-850)_58%,#0b3470)] text-white shadow-[var(--pg-shadow-lg)] lg:flex">
-        <div className="flex h-[76px] items-center gap-3 border-b border-white/10 px-5">
-          <div className="grid h-10 w-10 place-items-center rounded-xl bg-[linear-gradient(135deg,var(--pg-blue-500),var(--pg-cyan-400))] font-black text-[var(--pg-navy-950)] shadow-lg">
-            P
-          </div>
+        <div className="flex h-[88px] items-center border-b border-white/10 px-5">
           <div>
-            <p className="text-[17px] font-bold tracking-[-0.04em]">PrivGadai</p>
-            <p className="text-[10px] uppercase tracking-[0.2em] text-blue-200/60">
-              Partner Operations
-            </p>
+            <Image src="/privgadai-logo-light.svg" alt="PrivGadai" width={390} height={190} className="h-12 w-auto" priority />
+            <p className="-mt-1 pl-1 text-[9px] uppercase tracking-[0.2em] text-blue-200/60">Partner Operations</p>
           </div>
         </div>
 
@@ -247,11 +243,8 @@ function OrgChrome({ children }: { children: ReactNode }) {
       <div className="lg:pl-[248px]">
         <header className="sticky top-0 z-30 border-b border-border bg-[color:var(--pg-glass)] backdrop-blur-xl">
           <div className="flex h-[76px] items-center gap-4 px-4 sm:px-6 lg:px-8">
-            <Link href={`/orgs/${slug}`} className="flex items-center gap-2 lg:hidden">
-              <span className="grid h-9 w-9 place-items-center rounded-xl bg-primary font-black text-white">
-                P
-              </span>
-              <span className="font-bold tracking-tight">PrivGadai</span>
+            <Link href={`/orgs/${slug}`} className="lg:hidden" aria-label="PrivGadai">
+              <Image src="/privgadai-logo-dark.svg" alt="PrivGadai" width={390} height={190} className="h-10 w-auto" priority />
             </Link>
             <div className="relative hidden max-w-md flex-1 md:block">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 390 190" role="img" aria-labelledby="title">
+  <title id="title">PrivGadai</title>
+  <g fill="none" stroke="#0a0b0f" stroke-width="30" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M29 160V61c0-22 17-37 41-37h61c20 0 33 12 33 29s-13 29-33 29H94c-16 0-27 16-27 39 0 24 12 40 33 40h93v-54h-45"/>
+  </g>
+  <circle cx="207" cy="55" r="19" fill="#3865f6"/>
+  <text x="243" y="126" fill="#0a0b0f" font-family="Inter,Arial,sans-serif" font-size="50" font-weight="700" letter-spacing="-2">PrivGadai</text>
+</svg>

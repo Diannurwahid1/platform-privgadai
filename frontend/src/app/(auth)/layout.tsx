@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 
 export default function AuthLayout({
   children,
@@ -9,8 +10,8 @@ export default function AuthLayout({
     <div className="flex min-h-screen flex-col">
       <header className="border-b border-border">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <Link href="/" className="text-lg font-semibold tracking-tight">
-            PrivGadai
+          <Link href="/" aria-label="PrivGadai">
+            <Image src="/privgadai-logo-dark.svg" alt="PrivGadai" width={390} height={190} className="h-10 w-auto" priority />
           </Link>
           <nav className="flex gap-2 text-sm">
             <Link href="/login" className="px-3 py-1.5 hover:underline">

@@ -1,15 +1,14 @@
 import Link from "next/link";
+import Image from "next/image";
 
 export default function HomePage() {
   return (
     <main className="mx-auto flex min-h-screen max-w-3xl flex-col items-center justify-center gap-8 px-6 py-16">
       <div className="space-y-4 text-center">
+        <Image src="/privgadai-logo-dark.svg" alt="PrivGadai" width={390} height={190} className="mx-auto h-24 w-auto" priority />
         <p className="text-xs font-semibold uppercase tracking-[0.28em] text-primary">
           Konsol operator
         </p>
-        <h1 className="text-5xl font-semibold tracking-tight">
-          PrivGadai Admin
-        </h1>
         <p className="mx-auto max-w-xl font-serif text-base leading-7 text-muted-foreground">
           Konsol sementara untuk mengelola tenant, pengguna, audit, dan
           kesehatan sistem selama fondasi PrivGadai disiapkan.

@@ -1,10 +1,11 @@
 import Link from "next/link";
+import Image from "next/image";
 
 export default function HomePage() {
   return (
     <main className="min-h-screen px-6 py-8">
       <div className="mx-auto flex max-w-6xl items-center justify-between">
-        <span className="text-xl font-semibold tracking-tight">PrivGadai</span>
+        <Image src="/privgadai-logo-dark.svg" alt="PrivGadai" width={390} height={190} className="h-12 w-auto" priority />
         <Link
           href="/login"
           className="rounded-full border border-border px-5 py-2 text-sm font-medium hover:bg-muted"

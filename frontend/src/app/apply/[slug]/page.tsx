@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import Image from "next/image";
 import { CheckCircle2, LockKeyhole, PackageSearch, ShieldCheck, Sparkles } from "lucide-react";
 import { ErrorState, LoadingState } from "@/components/page-state";
 import {
@@ -49,7 +50,7 @@ export default function BorrowerIntakePage() {
   if (!product || !config.branches.length || !config.asset_categories.length) return <ErrorState message="Mitra belum membuka konfigurasi produk untuk pengajuan online." />;
 
   return <main className="min-h-screen bg-background">
-    <section className="pg-section-dark relative overflow-hidden px-5 py-12 sm:py-16"><div className="mx-auto max-w-5xl"><div className="flex items-center gap-3"><span className="grid h-11 w-11 place-items-center rounded-xl bg-gradient-to-br from-blue-400 to-cyan-300 font-black text-navy">P</span><div><p className="font-bold">PrivGadai</p><p className="text-[10px] uppercase tracking-[0.18em] text-blue-200/70">Portal nasabah</p></div></div><div className="mt-10 max-w-2xl"><span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-blue-100"><Sparkles className="h-3.5 w-3.5" /> {config.partner.name}</span><h1 className="mt-5 text-4xl font-bold tracking-[-0.05em] sm:text-5xl">Ajukan pembiayaan dengan agunan secara transparan.</h1><p className="mt-4 max-w-xl text-sm leading-7 text-blue-100/70">Isi satu pengajuan aset. Mitra berizin melakukan review, appraisal manusia, penawaran, dan custody.</p></div></div></section>
+    <section className="pg-section-dark relative overflow-hidden px-5 py-12 sm:py-16"><div className="mx-auto max-w-5xl"><div><Image src="/privgadai-logo-light.svg" alt="PrivGadai" width={390} height={190} className="h-14 w-auto" priority /><p className="-mt-1 pl-1 text-[10px] uppercase tracking-[0.18em] text-blue-200/70">Portal nasabah</p></div><div className="mt-10 max-w-2xl"><span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-blue-100"><Sparkles className="h-3.5 w-3.5" /> {config.partner.name}</span><h1 className="mt-5 text-4xl font-bold tracking-[-0.05em] sm:text-5xl">Ajukan pembiayaan dengan agunan secara transparan.</h1><p className="mt-4 max-w-xl text-sm leading-7 text-blue-100/70">Isi satu pengajuan aset. Mitra berizin melakukan review, appraisal manusia, penawaran, dan custody.</p></div></div></section>
     <section className="mx-auto grid max-w-5xl gap-6 px-5 py-10 lg:grid-cols-[minmax(0,1fr)_300px]">
       <form onSubmit={submit} className="space-y-5 rounded-[var(--pg-radius-lg)] border border-border bg-surface p-5 shadow-[var(--pg-shadow-md)] sm:p-7">
         <div><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-primary">Form pengajuan</p><h2 className="mt-2 text-2xl font-bold">Data nasabah dan aset</h2></div>

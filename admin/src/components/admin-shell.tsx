@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { logout, me, type User } from "@/lib/auth";
 import { AdminSidebar } from "@/components/sidebar";
 import { Button } from "@/components/ui/button";
@@ -50,12 +51,10 @@ export function AdminShell({ children }: { children: ReactNode }) {
       <section className="mx-auto grid min-h-[calc(100vh-2rem)] max-w-7xl gap-5 rounded-4xl border border-border bg-background/82 p-4 backdrop-blur-md lg:grid-cols-[18rem_1fr] lg:p-5">
         <aside className="flex flex-col overflow-hidden rounded-3xl bg-foreground p-5 text-background">
           <div className="border-b border-background/15 pb-5">
+            <Image src="/privgadai-logo-light.svg" alt="PrivGadai" width={390} height={190} className="h-14 w-auto" priority />
             <p className="text-[0.65rem] font-semibold uppercase tracking-[0.32em] text-primary">
               Operator console
             </p>
-            <h1 className="mt-2 text-xl font-semibold tracking-tight">
-              PrivGadai Admin
-            </h1>
           </div>
           <AdminSidebar />
           <div className="mt-5 flex items-center justify-between gap-3 border-t border-background/15 pt-4 text-xs text-background/62 lg:mt-auto lg:block lg:space-y-3">

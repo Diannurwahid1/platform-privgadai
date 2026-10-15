@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { login, logout, me } from "@/lib/auth";
@@ -71,6 +72,7 @@ export default function AdminLoginPage() {
         transition={{ duration: 0.25 }}
         className="w-full"
       >
+        <Image src="/privgadai-logo-dark.svg" alt="PrivGadai" width={390} height={190} className="mx-auto mb-5 h-20 w-auto" priority />
         <Card>
           <CardHeader>
             <p className="text-xs font-semibold uppercase tracking-[0.28em] text-primary">
