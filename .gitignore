@@ -1,0 +1,15 @@
+.vscode/*
+!.vscode/extensions.json
+node_modules/
+.env
+.env.*
+!.env.example
+.venv/
+**/.venv/
+**/.next/
+**/node_modules/
+*.log
+.tmp/
+.uv-cache/
+.uv-python/
+.pnpm-store/
