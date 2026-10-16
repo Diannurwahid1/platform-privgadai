@@ -219,6 +219,10 @@ Settings dibangun sebagai configuration workbench:
 
 Semua konfigurasi penting memiliki draft, review, approved, effective, superseded; preview dampak; effective date; maker-checker; dan rollback melalui versi baru.
 
+Implementasi control plane saat ini menyediakan register versi terisolasi per tenant dan pasangan domain/key, snapshot payload JSON dengan checksum SHA-256, status draft/pending approval/approved/effective/superseded/rejected, preview perubahan per field, event lifecycle, aktivasi langsung atau terjadwal, serta rollback aman dengan mengklon snapshot lama menjadi versi baru. Aktivasi menggunakan approval generik dan melarang maker menjadi checker.
+
+Konfigurasi efektif belum boleh dianggap otomatis mengubah seluruh mesin operasional. Setiap consumer product, pricing, appraisal, workflow, custody, accounting, regulatory, dan access wajib memakai resolver konfigurasi efektif beserta schema domain dan fallback terkontrol sebelum konfigurasi tersebut diberi label aktif untuk operasi produksi.
+
 ## Task modul
 
 - [ ] CRM-101: customer list server-side dan detail 360°.
@@ -234,3 +238,5 @@ Semua konfigurasi penting memiliki draft, review, approved, effective, supersede
 - [ ] CLC-101: collection queue, contact policy, promise-to-pay.
 - [ ] CMP-101: exception, approval, complaint, support SLA.
 - [ ] CFG-101: configuration workbench terversi dan effective-dated.
+  - Register, editor, preview diff, checksum, lifecycle event, approval, scheduled activation, supersede, dan rollback-as-new-version tersedia.
+  - Resolver runtime, schema domain, dan managed activation scheduler masih dilanjutkan.

@@ -93,6 +93,8 @@ Exit: transaksi uang mempunyai source event, balanced journal, receipt, dan reko
   - Intake multi-channel, tiket unik, Customer 360, branch scope, vulnerable/regulator flags, owner, response/resolution SLA, komunikasi, escalation, outcome, compensation decision, maker-checker resolution, dan reopen tersedia.
   - Evidence, messaging/email adapter, refund posting, acknowledgement regulator, dan taxonomy effective-dated masih dilanjutkan.
 - [ ] F6-05: configuration workbench versioned/effective-dated.
+  - Control plane per tenant/domain/key, immutable version snapshot, checksum, preview perubahan, effective date, approval, scheduled activation, supersede, event history, dan rollback melalui versi baru sudah tersedia.
+  - Binding seluruh operational engine ke configuration resolver, schema validation per domain, dan managed scheduler masih menjadi gate penutup.
 - [ ] F6-06: privileged access, MFA, session, security event.
 
 Exit: semua command P0 memiliki event, kontrol approval, dan konfigurasi terversi.

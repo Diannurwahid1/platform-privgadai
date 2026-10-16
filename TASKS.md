@@ -23,6 +23,7 @@ Dokumen ini menjadi daftar kerja teknis aktif berdasarkan business blueprint dan
 | Audit | business domain event explorer dan technical request audit | immutable archival, retention/legal hold, SIEM export |
 | OJK monthly | controlled snapshot, Form 1100/2100/9100 package, validation, reconciliation, checksum, sign-off | seluruh lampiran resmi, official validator test, submission acknowledgement |
 | SLIK | encrypted D01/F01/A01 snapshot, NIK protected at rest, validation, reconciliation, ZIP export | full official field/code dictionary, correction/delete semantics, official validator |
+| Configuration | version register per tenant/domain/key, JSON snapshot, checksum, impact diff, effective date, maker-checker, scheduled activation, supersede, rollback as new version | bind every operational engine to approved effective configuration, managed scheduler, schema validation per domain |
 | Runtime | liveness/readiness, migration head check, request ID, headers, release identity | telemetry backend, SLO/alert routing, backup restore, DR, load/security test |
 
 ## P0 — sebelum pilot operasional terkontrol
@@ -32,6 +33,8 @@ Dokumen ini menjadi daftar kerja teknis aktif berdasarkan business blueprint dan
 - [ ] Bangun reconciliation workbench untuk cashbox, loan subledger, GL, dan bank statement.
 - [x] Bangun complaint/support case dengan SLA response dan resolution, escalation, komunikasi, outcome, dan maker-checker.
 - [ ] Bangun configuration workbench versioned/effective-dated untuk product, pricing, appraisal, workflow, accounting, custody, regulatory, dan authority matrix.
+  - Control plane, UI register/editor/diff/history, checksum, maker-checker, activation terjadwal, supersede, dan rollback melalui versi baru sudah tersedia.
+  - Runtime binding untuk seluruh product/pricing/workflow/accounting/custody/regulatory/access consumer dan schema validator per domain masih harus diselesaikan sebelum gate ditutup.
 - [ ] Tambahkan evidence attachment dan malware scan pada incident, appraisal, custody, serta KYC.
 - [ ] Terapkan MFA privileged, session inventory/revoke, step-up auth, dan security event explorer.
 - [ ] Jalankan migration rehearsal, backup restore, load/soak, dependency/security scan, serta UAT per role dan cabang.

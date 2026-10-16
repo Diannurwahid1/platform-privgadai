@@ -369,6 +369,23 @@ export type ComplaintDetail = {
   events: Array<{ id: string; event_type: string; actor_user_id: string | null; direction: string | null;
     channel: string | null; from_status: string | null; to_status: string | null; message: string | null; occurred_at: string }>;
 };
+export type ConfigurationEvent = {
+  id: string; event_type: string; actor_user_id: string | null; from_status: string | null;
+  to_status: string | null; reason: string | null; occurred_at: string;
+};
+export type ConfigurationVersion = {
+  id: string; domain: string; config_key: string; version: number; status: string;
+  effective_from: string; effective_until: string | null; payload: Record<string, unknown>;
+  checksum_sha256: string; change_summary: string; created_by_user_id: string;
+  approved_by_user_id: string | null; approved_at: string | null; activated_at: string | null;
+  supersedes_id: string | null; created_at: string; events?: ConfigurationEvent[];
+};
+export type ConfigurationPreview = {
+  configuration_id: string; current_version: number | null; candidate_version: number;
+  changed_field_count: number; effective_from: string;
+  changes: Array<{ field: string; before: unknown; after: unknown }>;
+  impact: { domain: string; key: string; requires_approval: boolean; supersedes_id: string | null };
+};
 
 export const listBranches = () => apiFetch<BranchItem[]>("/v1/master/branches");
 export const listAssetCategories = () =>
@@ -553,4 +570,21 @@ export const recountInventoryCheck = (id: string, observations: Array<Record<str
     method: "POST",
     json: { observations },
   });
+export const listConfigurations = () => apiFetch<ConfigurationVersion[]>("/v1/configurations");
+export const getConfiguration = (id: string) =>
+  apiFetch<ConfigurationVersion>(`/v1/configurations/${id}`);
+export const previewConfiguration = (id: string) =>
+  apiFetch<ConfigurationPreview>(`/v1/configurations/${id}/preview`);
+export const createConfiguration = (json: Record<string, unknown>) =>
+  apiFetch<ActionResult>("/v1/configurations", { method: "POST", json });
+export const updateConfiguration = (id: string, json: Record<string, unknown>) =>
+  apiFetch<ActionResult>(`/v1/configurations/${id}`, { method: "PUT", json });
+export const submitConfiguration = (id: string, reason: string) =>
+  apiFetch<ActionResult>(`/v1/configurations/${id}/submit`, { method: "POST", json: { reason } });
+export const cloneConfiguration = (id: string, effective_from: string, change_summary: string) =>
+  apiFetch<ActionResult>(`/v1/configurations/${id}/clone`, {
+    method: "POST", json: { effective_from, change_summary },
+  });
+export const applyDueConfigurations = () =>
+  apiFetch<{ count: number; message: string }>("/v1/configurations/apply-due", { method: "POST" });
 

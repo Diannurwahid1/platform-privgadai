@@ -11,6 +11,7 @@ from dogeapi.models.audit_log import AuditLog
 from dogeapi.models.auth_token import AuthTokenStore
 from dogeapi.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 from dogeapi.models.complaint import ComplaintCase, ComplaintEvent
+from dogeapi.models.configuration import ConfigurationEvent, ConfigurationVersion
 from dogeapi.models.erp import (
     AccountingPeriod,
     Cashbox,
@@ -82,6 +83,8 @@ __all__ = (
     "CollectionPromise",
     "ComplaintCase",
     "ComplaintEvent",
+    "ConfigurationEvent",
+    "ConfigurationVersion",
     "Consent",
     "CustodyEvent",
     "CustodyLocation",

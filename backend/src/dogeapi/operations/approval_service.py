@@ -18,6 +18,8 @@ from dogeapi.models import (
     CollateralEvent,
     ComplaintCase,
     ComplaintEvent,
+    ConfigurationEvent,
+    ConfigurationVersion,
     CustodyEvent,
     HumanAppraisal,
     Incident,
@@ -299,6 +301,48 @@ async def decide_approval(
                 message=reason,
             )
         )
+    elif item.aggregate_type == "configuration" and item.action == "activate_configuration":
+        configuration = await session.scalar(
+            select(ConfigurationVersion)
+            .where(ConfigurationVersion.org_id == org_id, ConfigurationVersion.id == item.aggregate_id)
+            .with_for_update()
+        )
+        if configuration is None or configuration.status != "pending_approval":
+            raise HTTPException(status.HTTP_409_CONFLICT, "Configuration tidak siap diputuskan")
+        previous_configuration_status = configuration.status
+        if decision == "approved":
+            configuration.approved_by_user_id = actor_id
+            configuration.approved_at = datetime.now(UTC)
+            if configuration.effective_from <= datetime.now(UTC):
+                from dogeapi.operations import configuration_service
+
+                await configuration_service.activate_configuration(session, configuration, actor_id)
+            else:
+                configuration.status = "approved"
+                session.add(
+                    ConfigurationEvent(
+                        org_id=org_id,
+                        configuration_id=configuration.id,
+                        actor_user_id=actor_id,
+                        event_type="ConfigurationApproved",
+                        from_status=previous_configuration_status,
+                        to_status="approved",
+                        reason=reason,
+                    )
+                )
+        else:
+            configuration.status = "rejected"
+            session.add(
+                ConfigurationEvent(
+                    org_id=org_id,
+                    configuration_id=configuration.id,
+                    actor_user_id=actor_id,
+                    event_type="ConfigurationRejected",
+                    from_status=previous_configuration_status,
+                    to_status="rejected",
+                    reason=reason,
+                )
+            )
     session.add(
         ApprovalEvent(
             org_id=org_id,
