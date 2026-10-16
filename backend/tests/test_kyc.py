@@ -34,7 +34,10 @@ async def test_ktp_kyc_masks_nik_encrypts_document_and_enforces_checker(
     borrower = Borrower(
         org_id=org_id, customer_reference="CIF-KYC-001", full_name="BUDI SANTOSO", phone_masked="0812••••1234"
     )
-    db_session.add_all([checker, borrower])
+    unverified_borrower = Borrower(
+        org_id=org_id, customer_reference="CIF-KYC-002", full_name="SITI AMINAH", phone_masked="0813••••5678"
+    )
+    db_session.add_all([checker, borrower, unverified_borrower])
     await db_session.flush()
 
     verification = await kyc_service.create_verification(
@@ -138,7 +141,10 @@ async def test_ktp_kyc_masks_nik_encrypts_document_and_enforces_checker(
     scoped = {"Authorization": f"Bearer {switched.json()['access_token']}"}
     queue = await client.get("/v1/kyc/verifications", headers=scoped)
     assert queue.status_code == 200, queue.text
-    assert queue.json()[0]["national_id_masked"] == "327301••••••0001"
+    queue_by_reference = {item["customer_reference"]: item for item in queue.json()}
+    assert queue_by_reference["CIF-KYC-001"]["national_id_masked"] == "327301••••••0001"
+    assert queue_by_reference["CIF-KYC-002"]["status"] == "not_started"
+    assert queue_by_reference["CIF-KYC-002"]["id"] is None
     detail = await client.get(f"/v1/customers/{borrower.id}/kyc", headers=scoped)
     assert detail.status_code == 200, detail.text
     assert detail.json()["current_status"] == "verified"

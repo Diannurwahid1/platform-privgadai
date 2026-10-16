@@ -10,6 +10,7 @@ import {
   CircleDollarSign,
   ClipboardCheck,
   FileCheck2,
+  IdCard,
   PackageCheck,
   Scale,
   ShieldCheck,
@@ -114,6 +115,9 @@ export default function ApplicationDetailPage() {
   const loanStatus = String(detail.loan?.status ?? "");
   const collateralStatus = String(detail.asset.collateral_status ?? "");
   const selectedLocation = locations[0];
+  const kycStatus = String(detail.borrower.kyc_status ?? "not_started");
+  const customerId = String(detail.borrower.id ?? "");
+  const kycVerified = kycStatus === "verified";
 
   return (
     <div className="space-y-6">
@@ -144,6 +148,11 @@ export default function ApplicationDetailPage() {
         <Metric icon={ShieldCheck} label="Produk" value={String(detail.product?.name ?? "Belum dipilih")} />
       </section>
 
+      <section className={`flex flex-col gap-4 rounded-[var(--pg-radius-lg)] border p-5 shadow-[var(--pg-shadow-sm)] sm:flex-row sm:items-center sm:justify-between ${kycVerified ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
+        <div className="flex items-start gap-3"><span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${kycVerified ? "bg-emerald-600 text-white" : "bg-amber-100 text-amber-800"}`}><IdCard className="h-5 w-5" /></span><div><h2 className="text-sm font-bold">Gate KYC debitur: {kycVerified ? "Terverifikasi" : labels[kycStatus] ?? kycStatus.replaceAll("_", " ")}</h2><p className="mt-1 text-xs leading-5 text-muted-foreground">{kycVerified ? "Identitas masih berlaku dan pengajuan dapat diteruskan ke penaksiran." : "Pengajuan tidak dapat masuk penaksiran sebelum KTP, OCR, dan keputusan checker selesai."}</p></div></div>
+        <Link href={`/orgs/${slug}/customers/${customerId}?tab=identity`} className={`inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl px-4 text-xs font-bold ${kycVerified ? "border border-emerald-300 bg-white text-emerald-800" : "bg-amber-700 text-white"}`}><IdCard className="h-4 w-4" />{kycVerified ? "Lihat KYC" : "Kerjakan KYC"}</Link>
+      </section>
+
       <section className="rounded-[var(--pg-radius-lg)] border border-border bg-surface p-5 shadow-[var(--pg-shadow-sm)]">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-bold">Evidence privat</h2><p className="mt-1 text-xs text-muted-foreground">Jenis file diperiksa dari isi, dipindai, diberi checksum, dan file berisiko dikarantina.</p></div><div className="flex flex-wrap gap-2"><label className="inline-flex h-10 cursor-pointer items-center justify-center rounded-xl bg-surface-blue px-4 text-xs font-bold text-primary"><input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="hidden" disabled={busy} onChange={(event) => { const file = event.target.files?.[0]; if (file) void act("Evidence pengajuan dipindai dan disimpan.", () => uploadEvidence(id, file)); event.currentTarget.value = ""; }} />Bukti pengajuan</label>{latestAppraisal && <label className="inline-flex h-10 cursor-pointer items-center justify-center rounded-xl bg-primary px-4 text-xs font-bold text-white"><input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="hidden" disabled={busy} onChange={(event) => { const file = event.target.files?.[0]; if (file) void act("Evidence appraisal dipindai dan ditautkan.", () => uploadEvidence(id, file, "appraisal_evidence", "appraisal", String(latestAppraisal.id))); event.currentTarget.value = ""; }} />Bukti appraisal</label>}</div></div>
         <div className="mt-4 flex flex-wrap gap-2">{detail.evidence.map((item) => <span key={String(item.id)} title={String(item.scan_detail ?? "")} className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold ${String(item.scan_status) === "clean" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-red-200 bg-red-50 text-red-700"}`}>{String(item.file_name)} · {String(item.subject_type ?? "application")} · {String(item.scan_status)}</span>)}{!detail.evidence.length && <p className="text-xs text-muted-foreground">Belum ada evidence.</p>}</div>
@@ -165,7 +174,8 @@ export default function ApplicationDetailPage() {
           <div className="flex items-center justify-between"><div><h2 className="font-bold">Proses pengajuan</h2><p className="mt-1 text-xs text-muted-foreground">Gate manusia dan state machine sesuai blueprint teknikal</p></div><FileCheck2 className="h-5 w-5 text-primary" /></div>
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
             {detail.status === "submitted" && <Action disabled={busy} onClick={() => act("Pengajuan masuk ke review.", () => transitionApplication(id, "under_review", "Dokumen awal diverifikasi"))} icon={ClipboardCheck}>Mulai review</Action>}
-            {detail.status === "under_review" && <Action disabled={busy} onClick={() => act("Pengajuan siap ditaksir.", () => transitionApplication(id, "appraisal", "Review kelengkapan selesai"))} icon={Scale}>Kirim ke appraisal</Action>}
+            {detail.status === "under_review" && kycVerified && <Action disabled={busy} onClick={() => act("Pengajuan siap ditaksir.", () => transitionApplication(id, "appraisal", "Review kelengkapan dan KYC selesai"))} icon={Scale}>Kirim ke appraisal</Action>}
+            {detail.status === "under_review" && !kycVerified && <Link href={`/orgs/${slug}/customers/${customerId}?tab=identity`} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 text-xs font-bold text-amber-800"><IdCard className="h-4 w-4" />Selesaikan KYC dahulu</Link>}
             {detail.status === "appraisal" && !latestAppraisal && <Action disabled={busy} onClick={() => act("Appraisal manusia tersimpan.", () => createAppraisal({ application_id: id, market_value: assetValue, liquidation_value: liquidation, recommended_loan: recommended, condition_grade: detail.asset.condition_grade ?? "B", rationale: "Penaksiran manusia berdasarkan kondisi fisik dan pembanding pasar." }))} icon={Scale}>Simpan appraisal manusia</Action>}
             {detail.status === "appraisal" && latestAppraisal?.status === "final" && <Action disabled={busy} onClick={() => act("Penawaran diterbitkan.", () => createOffer({ application_id: id, principal_amount: Number(latestAppraisal.recommended_loan), tenor_days: detail.requested_tenor_days ?? 30, service_fee_amount: Math.floor(Number(latestAppraisal.recommended_loan) * 0.05), expires_at: new Date(Date.now() + 2 * 86400000).toISOString(), agreement_version: "AGR-2026.1" }))} icon={FileCheck2}>Terbitkan penawaran</Action>}
             {detail.status === "appraisal" && latestAppraisal?.status === "pending_approval" && <Link href={`/orgs/${slug}/compliance/approvals`} className="inline-flex h-10 items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 text-xs font-bold text-amber-800"><ShieldCheck className="h-4 w-4" />Menunggu checker appraisal</Link>}

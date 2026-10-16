@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -131,6 +132,21 @@ async def customers(session: SessionDep, org_id: OrgIdDep, user: UserDep) -> lis
         )
         statement = statement.where(Borrower.id.in_(visible_customers))
     rows = (await session.execute(statement.order_by(Borrower.created_at.desc()))).all()
+    borrower_ids = [borrower.id for borrower, _ in rows]
+    verifications = (
+        list(
+            await session.scalars(
+                select(KycVerification)
+                .where(KycVerification.org_id == org_id, KycVerification.borrower_id.in_(borrower_ids))
+                .order_by(KycVerification.created_at.desc())
+            )
+        )
+        if borrower_ids
+        else []
+    )
+    latest_kyc: dict[UUID, KycVerification] = {}
+    for verification in verifications:
+        latest_kyc.setdefault(verification.borrower_id, verification)
     return [
         {
             "id": borrower.id,
@@ -142,6 +158,15 @@ async def customers(session: SessionDep, org_id: OrgIdDep, user: UserDep) -> lis
             "risk_status": profile.risk_status if profile else "normal",
             "internal_watchlist": profile.internal_watchlist if profile else False,
             "correction_status": profile.correction_status if profile else "none",
+            "kyc_status": (
+                "expired"
+                if borrower.id in latest_kyc
+                and latest_kyc[borrower.id].status == "verified"
+                and latest_kyc[borrower.id].expires_at
+                and latest_kyc[borrower.id].expires_at <= datetime.now(UTC)
+                else latest_kyc[borrower.id].status if borrower.id in latest_kyc else "not_started"
+            ),
+            "kyc_expires_at": latest_kyc[borrower.id].expires_at if borrower.id in latest_kyc else None,
         }
         for borrower, profile in rows
     ]

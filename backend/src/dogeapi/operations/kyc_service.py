@@ -429,6 +429,9 @@ async def serialize_customer_kyc(
     )
     result: list[dict[str, object]] = []
     for item in rows:
+        effective_status = item.status
+        if item.status == "verified" and item.expires_at and item.expires_at <= datetime.now(UTC):
+            effective_status = "expired"
         documents = list(
             await session.scalars(
                 select(KycDocument)
@@ -475,7 +478,7 @@ async def serialize_customer_kyc(
         result.append(
             {
                 "id": item.id,
-                "status": item.status,
+                "status": effective_status,
                 "document_type": item.document_type,
                 "national_id_masked": item.national_id_masked,
                 "legal_name": item.legal_name,
@@ -534,6 +537,6 @@ async def serialize_customer_kyc(
         )
     return {
         "customer_id": borrower_id,
-        "current_status": rows[0].status if rows else "not_started",
+        "current_status": str(result[0]["status"]) if result else "not_started",
         "verifications": result,
     }

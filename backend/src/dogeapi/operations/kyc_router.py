@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -24,35 +25,51 @@ async def kyc_verification_queue(session: SessionDep, org_id: OrgIdDep, user: Us
     branch_ids = await mvp_service.visible_branch_ids(
         session, org_id, user.id, {"ops_admin", "branch_manager", "loan_officer", "reviewer", "auditor"}
     )
-    statement = (
-        select(KycVerification, Borrower)
-        .join(Borrower, (Borrower.id == KycVerification.borrower_id) & (Borrower.org_id == org_id))
-        .where(KycVerification.org_id == org_id)
-    )
+    statement = select(Borrower).where(Borrower.org_id == org_id)
     if branch_ids is not None:
         visible_customers = select(LoanApplication.borrower_id).where(
             LoanApplication.org_id == org_id,
             LoanApplication.branch_id.in_(branch_ids),
         )
-        statement = statement.where(KycVerification.borrower_id.in_(visible_customers))
-    rows = (await session.execute(statement.order_by(KycVerification.created_at.desc()).limit(500))).all()
+        statement = statement.where(Borrower.id.in_(visible_customers))
+    borrowers = list(await session.scalars(statement.order_by(Borrower.created_at.desc()).limit(500)))
+    borrower_ids = [borrower.id for borrower in borrowers]
+    verifications = (
+        list(
+            await session.scalars(
+                select(KycVerification)
+                .where(KycVerification.org_id == org_id, KycVerification.borrower_id.in_(borrower_ids))
+                .order_by(KycVerification.created_at.desc())
+            )
+        )
+        if borrower_ids
+        else []
+    )
+    latest_by_customer: dict[UUID, KycVerification] = {}
+    for verification in verifications:
+        latest_by_customer.setdefault(verification.borrower_id, verification)
     return [
         {
-            "id": item.id,
+            "id": item.id if item else None,
             "customer_id": borrower.id,
             "customer_reference": borrower.customer_reference,
             "customer_name": borrower.full_name,
-            "national_id_masked": item.national_id_masked,
-            "status": item.status,
-            "risk_level": item.risk_level,
-            "verification_method": item.verification_method,
-            "initiated_by_user_id": item.initiated_by_user_id,
-            "reviewed_by_user_id": item.reviewed_by_user_id,
-            "created_at": item.created_at,
-            "reviewed_at": item.reviewed_at,
-            "expires_at": item.expires_at,
+            "national_id_masked": item.national_id_masked if item else None,
+            "status": (
+                "expired"
+                if item and item.status == "verified" and item.expires_at and item.expires_at <= datetime.now(UTC)
+                else item.status if item else "not_started"
+            ),
+            "risk_level": item.risk_level if item else "unassessed",
+            "verification_method": item.verification_method if item else None,
+            "initiated_by_user_id": item.initiated_by_user_id if item else None,
+            "reviewed_by_user_id": item.reviewed_by_user_id if item else None,
+            "created_at": item.created_at if item else None,
+            "reviewed_at": item.reviewed_at if item else None,
+            "expires_at": item.expires_at if item else None,
         }
-        for item, borrower in rows
+        for borrower in borrowers
+        for item in [latest_by_customer.get(borrower.id)]
     ]
 
 

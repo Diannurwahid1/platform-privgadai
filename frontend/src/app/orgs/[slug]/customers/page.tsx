@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowRight, Download, Filter, Plus, Search, ShieldCheck, Users } from "lucide-react";
+import { AlertTriangle, ArrowRight, Download, Filter, IdCard, Plus, Search, ShieldCheck, Users } from "lucide-react";
 import { ErrorState, LoadingState } from "@/components/page-state";
 import { listCustomers, type CustomerListItem } from "@/lib/operations";
 
@@ -37,6 +37,7 @@ export default function CustomersPage() {
 
   const watchlistCount = items.filter((item) => item.internal_watchlist).length;
   const correctionCount = items.filter((item) => item.correction_status !== "none").length;
+  const kycPendingCount = items.filter((item) => item.kyc_status !== "verified").length;
 
   return <div className="space-y-5">
     <header className="flex flex-col gap-4 border-b border-border pb-5 xl:flex-row xl:items-end xl:justify-between">
@@ -46,13 +47,15 @@ export default function CustomersPage() {
         <p className="mt-2 max-w-3xl text-sm text-muted-foreground">Kelola identitas, KYC, consent, fasilitas, agunan, komunikasi, dan koreksi data debitur dalam satu rekam operasional.</p>
       </div>
       <div className="flex flex-wrap gap-2">
+        <Link href={`/orgs/${slug}/customers/kyc`} className="inline-flex h-10 items-center gap-2 rounded-xl border border-primary/25 bg-surface-blue px-3 text-xs font-bold text-primary"><IdCard className="h-4 w-4" />Antrean KYC</Link>
         <button type="button" className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-surface px-3 text-xs font-semibold"><Download className="h-4 w-4" /> Ekspor terkontrol</button>
         <Link href={`/orgs/${slug}/loans/applications/new`} className="inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-xs font-bold text-white"><Plus className="h-4 w-4" /> Pengajuan baru</Link>
       </div>
     </header>
 
-    <section className="grid gap-3 sm:grid-cols-3">
+    <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       <Metric label="Total debitur" value={items.length} icon={Users} tone="blue" />
+      <Metric label="KYC perlu tindakan" value={kycPendingCount} icon={IdCard} tone={kycPendingCount ? "amber" : "neutral"} />
       <Metric label="Watchlist internal" value={watchlistCount} icon={AlertTriangle} tone={watchlistCount ? "red" : "neutral"} />
       <Metric label="Koreksi berjalan" value={correctionCount} icon={ShieldCheck} tone={correctionCount ? "amber" : "neutral"} />
     </section>
@@ -65,11 +68,12 @@ export default function CustomersPage() {
         ].map(([value, label]) => <button key={value} type="button" onClick={() => setRisk(value)} className={`shrink-0 rounded-lg border px-3 py-2 text-xs font-semibold ${risk === value ? "border-primary bg-primary text-white" : "border-border bg-surface text-muted-foreground"}`}>{label}</button>)}</div>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[940px] text-left text-sm">
-          <thead className="border-b border-border bg-surface-soft text-[10px] uppercase tracking-[0.13em] text-muted-foreground"><tr><th className="px-5 py-3">CIF / Debitur</th><th className="px-5 py-3">Kontak</th><th className="px-5 py-3">Wilayah</th><th className="px-5 py-3">SLIK</th><th className="px-5 py-3">Risiko</th><th className="px-5 py-3">Koreksi</th><th className="w-16 px-5 py-3"><span className="sr-only">Aksi</span></th></tr></thead>
+        <table className="w-full min-w-[1040px] text-left text-sm">
+          <thead className="border-b border-border bg-surface-soft text-[10px] uppercase tracking-[0.13em] text-muted-foreground"><tr><th className="px-5 py-3">CIF / Debitur</th><th className="px-5 py-3">Kontak</th><th className="px-5 py-3">KYC</th><th className="px-5 py-3">Wilayah</th><th className="px-5 py-3">SLIK</th><th className="px-5 py-3">Risiko</th><th className="px-5 py-3">Koreksi</th><th className="w-16 px-5 py-3"><span className="sr-only">Aksi</span></th></tr></thead>
           <tbody className="divide-y divide-border/70">{filtered.map((item) => <tr key={item.id} className="group hover:bg-surface-soft/70">
             <td className="px-5 py-4"><Link href={`/orgs/${slug}/customers/${item.id}`} className="font-semibold hover:text-primary">{item.full_name}</Link><p className="mt-1 font-mono text-[11px] text-primary">{item.customer_reference}</p></td>
             <td className="px-5 py-4 text-muted-foreground">{item.phone_masked}</td>
+            <td className="px-5 py-4"><Link href={`/orgs/${slug}/customers/${item.id}?tab=identity`} className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold ${item.kyc_status === "verified" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}><IdCard className="h-3.5 w-3.5" />{kycLabel(item.kyc_status)}</Link></td>
             <td className="px-5 py-4"><span className="font-medium">DATI II</span><p className="mt-1 text-xs text-muted-foreground">{item.dati_ii_code ?? "Belum dipetakan"}</p></td>
             <td className="px-5 py-4"><span className={item.slik_subject_code ? "text-foreground" : "text-warning"}>{item.slik_subject_code ?? "Perlu dilengkapi"}</span></td>
             <td className="px-5 py-4"><span className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold ${item.internal_watchlist || item.risk_status === "high" ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-700"}`}><span className="h-1.5 w-1.5 rounded-full bg-current" />{item.internal_watchlist ? "Watchlist" : (riskLabel[item.risk_status] ?? item.risk_status)}</span></td>
@@ -87,4 +91,9 @@ export default function CustomersPage() {
 function Metric({ label, value, icon: Icon, tone }: { label: string; value: number; icon: typeof Users; tone: "blue" | "red" | "amber" | "neutral" }) {
   const tones = { blue: "bg-blue-50 text-blue-700", red: "bg-red-50 text-red-700", amber: "bg-amber-50 text-amber-700", neutral: "bg-surface-soft text-muted-foreground" };
   return <article className="flex items-center gap-3 rounded-2xl border border-border bg-surface p-4"><span className={`grid h-10 w-10 place-items-center rounded-xl ${tones[tone]}`}><Icon className="h-5 w-5" /></span><div><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-xl font-bold tabular-nums">{value}</p></div></article>;
+}
+
+function kycLabel(status: string) {
+  const labels: Record<string, string> = { not_started: "Mulai KYC", pending_documents: "Dokumen", pending_review: "Menunggu checker", needs_information: "Perlu data", verified: "Terverifikasi", expired: "Kedaluwarsa", rejected: "Ditolak" };
+  return labels[status] ?? status.replaceAll("_", " ");
 }

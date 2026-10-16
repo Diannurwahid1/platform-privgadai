@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, BriefcaseBusiness, CalendarClock, Copy, FileCheck2, Landmark, MessagesSquare, PackageSearch, Plus, Printer, ShieldCheck, UserRound } from "lucide-react";
+import { ArrowLeft, BriefcaseBusiness, CalendarClock, Copy, FileCheck2, IdCard, Landmark, MessagesSquare, PackageSearch, Plus, Printer, ShieldCheck, UserRound } from "lucide-react";
 import { ErrorState, LoadingState } from "@/components/page-state";
 import { CustomerKycWorkspace } from "@/components/customer-kyc-workspace";
 import { getCustomerDetail, type CustomerDetail } from "@/lib/operations";
@@ -14,6 +14,7 @@ const labels: Record<string, string> = { submitted: "Diajukan", under_review: "D
 
 export default function CustomerDetailPage() {
   const params = useParams<{ slug: string; id: string }>();
+  const searchParams = useSearchParams();
   const slug = params.slug;
   const [data, setData] = useState<CustomerDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -27,6 +28,11 @@ export default function CustomerDetailPage() {
     getCustomerDetail(params.id).then(setData).catch((reason: { detail?: string }) => setError(reason.detail ?? "Detail debitur gagal dimuat"));
   }, [params.id]);
 
+  useEffect(() => {
+    const requested = searchParams.get("tab");
+    if (requested && tabs.some(([value]) => value === requested)) setTab(requested);
+  }, [searchParams, tabs]);
+
   if (error) return <ErrorState message={error} actionHref={`/orgs/${slug}/customers`} actionLabel="Kembali ke daftar debitur" />;
   if (!data) return <LoadingState label="Menyusun profil debitur 360°" />;
 
@@ -39,6 +45,7 @@ export default function CustomerDetailPage() {
           <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h1 className="truncate text-2xl font-bold tracking-tight">{data.full_name}</h1><Status label={data.profile.internal_watchlist ? "Watchlist" : (labels[data.profile.risk_status] ?? data.profile.risk_status)} alert={data.profile.internal_watchlist || data.profile.risk_status === "high"} /></div><p className="mt-1 font-mono text-xs text-primary">{data.customer_reference}</p><p className="mt-2 text-xs text-muted-foreground">Terdaftar {date(data.created_at)} · {data.phone_masked}</p></div>
         </div>
         <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => setTab("identity")} className="inline-flex h-10 items-center gap-2 rounded-xl border border-primary/25 bg-surface-blue px-3 text-xs font-bold text-primary"><IdCard className="h-4 w-4" /> Buka KYC</button>
           <button type="button" onClick={() => navigator.clipboard.writeText(data.customer_reference)} className="inline-flex h-10 items-center gap-2 rounded-xl border border-border px-3 text-xs font-semibold"><Copy className="h-4 w-4" /> Salin CIF</button>
           <button type="button" onClick={() => window.print()} className="inline-flex h-10 items-center gap-2 rounded-xl border border-border px-3 text-xs font-semibold"><Printer className="h-4 w-4" /> Cetak ringkasan</button>
           <Link href={`/orgs/${slug}/loans/applications/new`} className="inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-xs font-bold text-white"><Plus className="h-4 w-4" /> Pengajuan baru</Link>
@@ -48,7 +55,7 @@ export default function CustomerDetailPage() {
     </section>
 
     {tab === "overview" && <Overview data={data} slug={slug} />}
-    {tab === "identity" && <Identity data={data} />}
+    {tab === "identity" && <Identity data={data} slug={slug} />}
     {tab === "facilities" && <Facilities data={data} slug={slug} />}
     {tab === "collateral" && <Collateral data={data} slug={slug} />}
     {tab === "complaints" && <Complaints data={data} slug={slug} />}
@@ -82,8 +89,8 @@ function Overview({ data, slug }: { data: CustomerDetail; slug: string }) {
   </>;
 }
 
-function Identity({ data }: { data: CustomerDetail }) {
-  return <div className="space-y-4"><CustomerKycWorkspace customerId={data.id} customerName={data.full_name} /><section className="grid gap-4 xl:grid-cols-2"><Panel title="Identitas dan referensi" subtitle="Data sensitif ditampilkan sesuai masking akses"><Definition label="Nama lengkap" value={data.full_name} /><Definition label="Nomor identitas" value={data.profile.national_id_masked ?? "Belum tersedia"} /><Definition label="Telepon" value={data.phone_masked} /><Definition label="DATI II" value={data.profile.dati_ii_code ?? "Belum dipetakan"} /><Definition label="Kode subjek SLIK" value={data.profile.slik_subject_code ?? "Belum dipetakan"} /></Panel><Panel title="Profil risiko" subtitle="Status dan catatan yang dipakai pada proses keputusan"><Definition label="Status risiko" value={labels[data.profile.risk_status] ?? data.profile.risk_status} /><Definition label="Watchlist internal" value={data.profile.internal_watchlist ? "Ya" : "Tidak"} /><Definition label="Status koreksi" value={data.profile.correction_status} /><Definition label="Catatan" value={data.profile.risk_notes ?? data.profile.watchlist_reason ?? "Tidak ada catatan"} /></Panel></section></div>;
+function Identity({ data, slug }: { data: CustomerDetail; slug: string }) {
+  return <div className="space-y-4"><CustomerKycWorkspace customerId={data.id} customerName={data.full_name} slug={slug} /><section className="grid gap-4 xl:grid-cols-2"><Panel title="Identitas dan referensi" subtitle="Data sensitif ditampilkan sesuai masking akses"><Definition label="Nama lengkap" value={data.full_name} /><Definition label="Nomor identitas" value={data.profile.national_id_masked ?? "Belum tersedia"} /><Definition label="Telepon" value={data.phone_masked} /><Definition label="DATI II" value={data.profile.dati_ii_code ?? "Belum dipetakan"} /><Definition label="Kode subjek SLIK" value={data.profile.slik_subject_code ?? "Belum dipetakan"} /></Panel><Panel title="Profil risiko" subtitle="Status dan catatan yang dipakai pada proses keputusan"><Definition label="Status risiko" value={labels[data.profile.risk_status] ?? data.profile.risk_status} /><Definition label="Watchlist internal" value={data.profile.internal_watchlist ? "Ya" : "Tidak"} /><Definition label="Status koreksi" value={data.profile.correction_status} /><Definition label="Catatan" value={data.profile.risk_notes ?? data.profile.watchlist_reason ?? "Tidak ada catatan"} /></Panel></section></div>;
 }
 
 function Facilities({ data, slug }: { data: CustomerDetail; slug: string }) {

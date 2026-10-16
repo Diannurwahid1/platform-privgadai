@@ -1469,6 +1469,19 @@ async def get_application_detail(
     borrower = await session.scalar(
         select(Borrower).where(Borrower.id == application.borrower_id, Borrower.org_id == org_id)
     )
+    latest_kyc = await session.scalar(
+        select(KycVerification)
+        .where(KycVerification.org_id == org_id, KycVerification.borrower_id == application.borrower_id)
+        .order_by(KycVerification.created_at.desc())
+    )
+    kyc_status = latest_kyc.status if latest_kyc else "not_started"
+    if (
+        latest_kyc
+        and latest_kyc.status == "verified"
+        and latest_kyc.expires_at
+        and latest_kyc.expires_at <= datetime.now(UTC)
+    ):
+        kyc_status = "expired"
     asset = await _get_asset(session, org_id, application.id)
     product = await session.scalar(
         select(LoanProduct).where(LoanProduct.id == application.product_id, LoanProduct.org_id == org_id)
@@ -1520,6 +1533,8 @@ async def get_application_detail(
             "customer_reference": borrower.customer_reference,
             "full_name": borrower.full_name,
             "phone_masked": borrower.phone_masked,
+            "kyc_status": kyc_status,
+            "kyc_expires_at": latest_kyc.expires_at if latest_kyc else None,
         }
         if borrower
         else {},

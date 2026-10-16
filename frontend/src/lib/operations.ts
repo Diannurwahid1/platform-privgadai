@@ -199,6 +199,8 @@ export type CustomerListItem = {
   risk_status: string;
   internal_watchlist: boolean;
   correction_status: string;
+  kyc_status: string;
+  kyc_expires_at: string | null;
 };
 
 export type CustomerDetail = {
@@ -298,9 +300,9 @@ export type KycProviderCapabilities = {
 
 export type CustomerKyc = { customer_id: string; current_status: string; verifications: KycVerification[] };
 export type KycQueueItem = {
-  id: string; customer_id: string; customer_reference: string; customer_name: string; national_id_masked: string;
-  status: string; risk_level: string; verification_method: string; initiated_by_user_id: string;
-  reviewed_by_user_id: string | null; created_at: string; reviewed_at: string | null; expires_at: string | null;
+  id: string | null; customer_id: string; customer_reference: string; customer_name: string; national_id_masked: string | null;
+  status: string; risk_level: string; verification_method: string | null; initiated_by_user_id: string | null;
+  reviewed_by_user_id: string | null; created_at: string | null; reviewed_at: string | null; expires_at: string | null;
 };
 export type ApprovalQueueItem = {
   id: string; branch_id: string | null; aggregate_type: string; aggregate_id: string; aggregate_reference: string;
