@@ -130,7 +130,7 @@ Policy decision dicatat beserta policy version dan hasil allow/deny.
 - [ ] AUD-104: audit explorer, timeline, diff, evidence, export.
 - [ ] AUD-105: integrity chain, retention, legal hold, dan verification job.
 - [ ] SEC-101: tenant/branch negative authorization test di seluruh API.
-  - Core operational read boundary sudah diterapkan pada dashboard, inbox, detail pengajuan, Customer 360, KYC, timeline agunan, evidence download, custody movement, dan business audit. Owner/admin tetap tenant-wide; member hanya melihat cabang dengan assignment aktif. Matrix finance, collection, regulatory export, serta background job belum menutup gate ini.
+  - Core operational read boundary sudah diterapkan pada dashboard, inbox, detail pengajuan, Customer 360, KYC, timeline agunan, evidence download, custody movement, finance/payment/reconciliation, collection, inventory, business audit, serta workspace regulator dan export. Owner/admin tetap tenant-wide; member hanya melihat cabang dengan assignment aktif. Background job tenant context dan branch attribution jurnal/report agregat masih belum menutup gate ini.
 - [ ] SEC-102: policy engine RBAC/ABAC dan policy decision log.
 - [ ] SEC-103: maker-checker serta conflict of interest enforcement.
 - [x] SEC-104: MFA/session/security center untuk privileged users.

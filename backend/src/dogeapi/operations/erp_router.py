@@ -6,6 +6,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from dogeapi.deps import OrgIdDep, SessionDep, SettingsDep, UserDep
 from dogeapi.models import (
@@ -22,6 +23,7 @@ from dogeapi.models import (
     CollectionCase,
     ComplaintCase,
     Consent,
+    CustodyLocation,
     DebtorProfile,
     InventoryCheck,
     InventoryCheckItem,
@@ -53,9 +55,56 @@ from dogeapi.operations.erp_schemas import (
     TellerSessionClose,
     TellerSessionOpen,
 )
-from dogeapi.security import require_scope
+from dogeapi.security import require_scope, require_step_up
 
 router = APIRouter(prefix="/v1", tags=["privgadai-erp"], dependencies=[Depends(require_scope("org:read"))])
+
+FINANCE_ROLES = {"ops_admin", "branch_manager", "finance"}
+COLLECTION_ROLES = {"ops_admin", "branch_manager", "loan_officer", "finance"}
+INVENTORY_ROLES = {"ops_admin", "branch_manager", "custodian", "auditor"}
+
+
+async def _cashbox_branch(session: AsyncSession, org_id: UUID, cashbox_id: UUID) -> UUID:
+    branch_id = await session.scalar(
+        select(Cashbox.branch_id).where(Cashbox.org_id == org_id, Cashbox.id == cashbox_id)
+    )
+    if branch_id is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Cashbox not found")
+    return branch_id
+
+
+async def _teller_session_branch(session: AsyncSession, org_id: UUID, teller_session_id: UUID) -> UUID:
+    branch_id = await session.scalar(
+        select(Cashbox.branch_id)
+        .join(TellerSession, (TellerSession.cashbox_id == Cashbox.id) & (TellerSession.org_id == org_id))
+        .where(Cashbox.org_id == org_id, TellerSession.id == teller_session_id)
+    )
+    if branch_id is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Teller session not found")
+    return branch_id
+
+
+async def _collection_branch(session: AsyncSession, org_id: UUID, case_id: UUID) -> UUID:
+    branch_id = await session.scalar(
+        select(LoanApplication.branch_id)
+        .join(LoanAccount, (LoanAccount.application_id == LoanApplication.id) & (LoanAccount.org_id == org_id))
+        .join(CollectionCase, (CollectionCase.loan_account_id == LoanAccount.id) & (CollectionCase.org_id == org_id))
+        .where(LoanApplication.org_id == org_id, CollectionCase.id == case_id)
+    )
+    if branch_id is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Collection case not found")
+    return branch_id
+
+
+async def _inventory_branch(session: AsyncSession, org_id: UUID, check_id: UUID) -> UUID:
+    branch_id = await session.scalar(
+        select(CustodyLocation.branch_id)
+        .join(InventoryCheck, (InventoryCheck.location_id == CustodyLocation.id) & (InventoryCheck.org_id == org_id))
+        .where(CustodyLocation.org_id == org_id, InventoryCheck.id == check_id)
+    )
+    if branch_id is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Inventory check not found")
+    return branch_id
 
 
 @router.get("/customers")
@@ -512,14 +561,17 @@ async def domain_events(
 
 @router.get("/finance/overview", response_model=FinanceOverview)
 async def finance_overview(session: SessionDep, org_id: OrgIdDep, user: UserDep) -> FinanceOverview:
-    await mvp_service.ensure_any_operational_role(session, org_id, user.id, {"ops_admin", "branch_manager", "finance"})
-    return await erp_service.finance_overview(session, org_id)
+    branch_ids = await mvp_service.visible_branch_ids(session, org_id, user.id, FINANCE_ROLES)
+    return await erp_service.finance_overview(session, org_id, branch_ids=branch_ids)
 
 
 @router.get("/finance/cashboxes")
 async def cashboxes(session: SessionDep, org_id: OrgIdDep, user: UserDep) -> list[dict[str, object]]:
-    await mvp_service.ensure_any_operational_role(session, org_id, user.id, {"ops_admin", "branch_manager", "finance"})
-    rows = list(await session.scalars(select(Cashbox).where(Cashbox.org_id == org_id).order_by(Cashbox.code)))
+    branch_ids = await mvp_service.visible_branch_ids(session, org_id, user.id, FINANCE_ROLES)
+    statement = select(Cashbox).where(Cashbox.org_id == org_id)
+    if branch_ids is not None:
+        statement = statement.where(Cashbox.branch_id.in_(branch_ids))
+    rows = list(await session.scalars(statement.order_by(Cashbox.code)))
     return [
         {"id": item.id, "branch_id": item.branch_id, "code": item.code, "name": item.name, "balance": item.balance}
         for item in rows
@@ -534,7 +586,8 @@ async def cashboxes(session: SessionDep, org_id: OrgIdDep, user: UserDep) -> lis
 async def fund_cashbox(
     cashbox_id: UUID, data: CashboxFundInput, session: SessionDep, org_id: OrgIdDep, user: UserDep
 ) -> ERPActionResult:
-    await mvp_service.ensure_any_operational_role(session, org_id, user.id, {"ops_admin", "finance"})
+    branch_id = await _cashbox_branch(session, org_id, cashbox_id)
+    await mvp_service.ensure_operational_access(session, org_id, user.id, branch_id, {"ops_admin", "finance"})
     item = await erp_service.fund_cashbox(
         session, org_id, user.id, cashbox_id, data.amount, data.external_reference, data.idempotency_key
     )
@@ -551,7 +604,8 @@ async def fund_cashbox(
 async def open_teller_session(
     data: TellerSessionOpen, session: SessionDep, org_id: OrgIdDep, user: UserDep
 ) -> ERPActionResult:
-    await mvp_service.ensure_any_operational_role(session, org_id, user.id, {"ops_admin", "finance"})
+    branch_id = await _cashbox_branch(session, org_id, data.cashbox_id)
+    await mvp_service.ensure_operational_access(session, org_id, user.id, branch_id, {"ops_admin", "finance"})
     item = await erp_service.open_teller_session(session, org_id, user.id, data.cashbox_id)
     await session.commit()
     return ERPActionResult(id=item.id, status=item.status, message="Teller session opened")
@@ -569,7 +623,8 @@ async def close_teller_session(
     org_id: OrgIdDep,
     user: UserDep,
 ) -> ERPActionResult:
-    await mvp_service.ensure_any_operational_role(session, org_id, user.id, {"ops_admin", "finance"})
+    branch_id = await _teller_session_branch(session, org_id, session_id)
+    await mvp_service.ensure_operational_access(session, org_id, user.id, branch_id, {"ops_admin", "finance"})
     item = await erp_service.close_teller_session(
         session,
         org_id,
@@ -584,15 +639,15 @@ async def close_teller_session(
 
 @router.get("/finance/teller-sessions")
 async def teller_sessions(session: SessionDep, org_id: OrgIdDep, user: UserDep) -> list[dict[str, object]]:
-    await mvp_service.ensure_any_operational_role(session, org_id, user.id, {"ops_admin", "branch_manager", "finance"})
-    rows = list(
-        await session.scalars(
-            select(TellerSession)
-            .where(TellerSession.org_id == org_id)
-            .order_by(TellerSession.opened_at.desc())
-            .limit(50)
-        )
+    branch_ids = await mvp_service.visible_branch_ids(session, org_id, user.id, FINANCE_ROLES)
+    statement = (
+        select(TellerSession)
+        .join(Cashbox, (Cashbox.id == TellerSession.cashbox_id) & (Cashbox.org_id == org_id))
+        .where(TellerSession.org_id == org_id)
     )
+    if branch_ids is not None:
+        statement = statement.where(Cashbox.branch_id.in_(branch_ids))
+    rows = list(await session.scalars(statement.order_by(TellerSession.opened_at.desc()).limit(50)))
     return [
         {
             "id": item.id,
@@ -701,19 +756,16 @@ async def reverse_journal(
 
 @router.get("/collections")
 async def collections(session: SessionDep, org_id: OrgIdDep, user: UserDep) -> list[dict[str, object]]:
-    await mvp_service.ensure_any_operational_role(
-        session, org_id, user.id, {"ops_admin", "branch_manager", "loan_officer", "finance"}
-    )
-    return await erp_service.list_collections(session, org_id)
+    branch_ids = await mvp_service.visible_branch_ids(session, org_id, user.id, COLLECTION_ROLES)
+    return await erp_service.list_collections(session, org_id, branch_ids=branch_ids)
 
 
 @router.get("/collections/{case_id}")
 async def collection_case_detail(
     case_id: UUID, session: SessionDep, org_id: OrgIdDep, user: UserDep
 ) -> dict[str, object]:
-    await mvp_service.ensure_any_operational_role(
-        session, org_id, user.id, {"ops_admin", "branch_manager", "loan_officer", "finance"}
-    )
+    branch_id = await _collection_branch(session, org_id, case_id)
+    await mvp_service.ensure_operational_access(session, org_id, user.id, branch_id, COLLECTION_ROLES)
     return await erp_service.collection_detail(session, org_id, case_id)
 
 
@@ -725,9 +777,8 @@ async def collection_case_detail(
 async def update_collection_case_plan(
     case_id: UUID, data: CollectionCasePlanUpdate, session: SessionDep, org_id: OrgIdDep, user: UserDep
 ) -> ERPActionResult:
-    await mvp_service.ensure_any_operational_role(
-        session, org_id, user.id, {"ops_admin", "branch_manager", "loan_officer", "finance"}
-    )
+    branch_id = await _collection_branch(session, org_id, case_id)
+    await mvp_service.ensure_operational_access(session, org_id, user.id, branch_id, COLLECTION_ROLES)
     item = await erp_service.update_collection_plan(
         session, org_id, case_id, data.strategy, data.stage, data.next_action_at
     )
@@ -744,9 +795,8 @@ async def update_collection_case_plan(
 async def collection_note(
     case_id: UUID, data: CollectionNoteCreate, session: SessionDep, org_id: OrgIdDep, user: UserDep
 ) -> ERPActionResult:
-    await mvp_service.ensure_any_operational_role(
-        session, org_id, user.id, {"ops_admin", "branch_manager", "loan_officer", "finance"}
-    )
+    branch_id = await _collection_branch(session, org_id, case_id)
+    await mvp_service.ensure_operational_access(session, org_id, user.id, branch_id, COLLECTION_ROLES)
     item = await erp_service.add_collection_note(session, org_id, user.id, case_id, data)
     await session.commit()
     return ERPActionResult(id=item.id, status="recorded", message="Collection follow-up recorded")
@@ -761,9 +811,8 @@ async def collection_note(
 async def create_promise_to_pay(
     case_id: UUID, data: CollectionPromiseCreate, session: SessionDep, org_id: OrgIdDep, user: UserDep
 ) -> ERPActionResult:
-    await mvp_service.ensure_any_operational_role(
-        session, org_id, user.id, {"ops_admin", "branch_manager", "loan_officer", "finance"}
-    )
+    branch_id = await _collection_branch(session, org_id, case_id)
+    await mvp_service.ensure_operational_access(session, org_id, user.id, branch_id, COLLECTION_ROLES)
     item = await erp_service.create_collection_promise(
         session,
         org_id,
@@ -791,9 +840,8 @@ async def resolve_promise_to_pay(
     org_id: OrgIdDep,
     user: UserDep,
 ) -> ERPActionResult:
-    await mvp_service.ensure_any_operational_role(
-        session, org_id, user.id, {"ops_admin", "branch_manager", "loan_officer", "finance"}
-    )
+    branch_id = await _collection_branch(session, org_id, case_id)
+    await mvp_service.ensure_operational_access(session, org_id, user.id, branch_id, COLLECTION_ROLES)
     item = await erp_service.resolve_collection_promise(
         session, org_id, user.id, case_id, promise_id, data.status, data.reason
     )
@@ -803,9 +851,7 @@ async def resolve_promise_to_pay(
 
 @router.get("/regulatory/templates")
 async def regulatory_templates(session: SessionDep, org_id: OrgIdDep, user: UserDep) -> list[dict[str, object]]:
-    await mvp_service.ensure_any_operational_role(
-        session, org_id, user.id, {"ops_admin", "branch_manager", "finance", "auditor"}
-    )
+    await mvp_service.ensure_any_operational_role(session, org_id, user.id, {"ops_admin", "auditor"})
     rows = list(
         await session.scalars(
             select(RegulatoryReportTemplate)
@@ -834,8 +880,9 @@ async def regulatory_templates(session: SessionDep, org_id: OrgIdDep, user: User
     dependencies=[Depends(require_scope("org:master:write"))],
 )
 async def create_regulatory_template(
-    data: RegulatoryTemplateCreate, session: SessionDep, org_id: OrgIdDep
+    data: RegulatoryTemplateCreate, session: SessionDep, org_id: OrgIdDep, user: UserDep
 ) -> ERPActionResult:
+    await mvp_service.ensure_any_operational_role(session, org_id, user.id, {"ops_admin", "auditor"})
     item = await erp_service.create_regulatory_template(session, org_id, data)
     await session.commit()
     return ERPActionResult(id=item.id, status=item.status, message="Versioned regulatory template created")
@@ -853,7 +900,7 @@ async def submit_regulatory_template_activation(
     org_id: OrgIdDep,
     user: UserDep,
 ) -> ERPActionResult:
-    await mvp_service.ensure_any_operational_role(session, org_id, user.id, {"ops_admin", "finance", "auditor"})
+    await mvp_service.ensure_any_operational_role(session, org_id, user.id, {"ops_admin", "auditor"})
     item = await erp_service.submit_regulatory_template_for_activation(
         session, org_id, user.id, template_id, data.reason
     )
@@ -863,9 +910,7 @@ async def submit_regulatory_template_activation(
 
 @router.get("/regulatory/runs")
 async def regulatory_runs(session: SessionDep, org_id: OrgIdDep, user: UserDep) -> list[dict[str, object]]:
-    await mvp_service.ensure_any_operational_role(
-        session, org_id, user.id, {"ops_admin", "branch_manager", "finance", "auditor"}
-    )
+    await mvp_service.ensure_any_operational_role(session, org_id, user.id, {"ops_admin", "auditor"})
     rows = (
         await session.execute(
             select(RegulatoryReportRun, RegulatoryReportTemplate)
@@ -908,9 +953,7 @@ async def regulatory_runs(session: SessionDep, org_id: OrgIdDep, user: UserDep) 
 async def create_regulatory_run(
     data: RegulatoryRunCreate, session: SessionDep, settings: SettingsDep, org_id: OrgIdDep, user: UserDep
 ) -> ERPActionResult:
-    await mvp_service.ensure_any_operational_role(
-        session, org_id, user.id, {"ops_admin", "branch_manager", "finance", "auditor"}
-    )
+    await mvp_service.ensure_any_operational_role(session, org_id, user.id, {"ops_admin", "auditor"})
     item = await erp_service.create_regulatory_run(session, org_id, user.id, data, settings)
     await session.commit()
     return ERPActionResult(id=item.id, status=item.status, message="Regulatory report draft generated; not submitted")
@@ -928,21 +971,20 @@ async def submit_regulatory_run(
     org_id: OrgIdDep,
     user: UserDep,
 ) -> ERPActionResult:
-    await mvp_service.ensure_any_operational_role(
-        session, org_id, user.id, {"ops_admin", "branch_manager", "finance", "auditor"}
-    )
+    await mvp_service.ensure_any_operational_role(session, org_id, user.id, {"ops_admin", "auditor"})
     item = await erp_service.submit_regulatory_run_for_approval(session, org_id, user.id, run_id, data.reason)
     await session.commit()
     return ERPActionResult(id=item.id, status=item.status, message="Regulatory report submitted for sign-off")
 
 
-@router.get("/regulatory/runs/{run_id}/export")
+@router.get(
+    "/regulatory/runs/{run_id}/export",
+    dependencies=[Depends(require_scope("org:reports:read")), Depends(require_step_up)],
+)
 async def export_regulatory_run(
     run_id: UUID, session: SessionDep, settings: SettingsDep, org_id: OrgIdDep, user: UserDep
 ) -> Response:
-    await mvp_service.ensure_any_operational_role(
-        session, org_id, user.id, {"ops_admin", "branch_manager", "finance", "auditor"}
-    )
+    await mvp_service.ensure_any_operational_role(session, org_id, user.id, {"ops_admin", "auditor"})
     content, filename, checksum = await erp_service.export_regulatory_package(session, org_id, run_id, settings)
     return Response(
         content=content,
@@ -956,14 +998,15 @@ async def export_regulatory_run(
 
 @router.get("/inventory-checks")
 async def inventory_checks(session: SessionDep, org_id: OrgIdDep, user: UserDep) -> list[dict[str, object]]:
-    await mvp_service.ensure_any_operational_role(
-        session, org_id, user.id, {"ops_admin", "branch_manager", "custodian", "auditor"}
+    branch_ids = await mvp_service.visible_branch_ids(session, org_id, user.id, INVENTORY_ROLES)
+    statement = (
+        select(InventoryCheck)
+        .join(CustodyLocation, (CustodyLocation.id == InventoryCheck.location_id) & (CustodyLocation.org_id == org_id))
+        .where(InventoryCheck.org_id == org_id)
     )
-    rows = list(
-        await session.scalars(
-            select(InventoryCheck).where(InventoryCheck.org_id == org_id).order_by(InventoryCheck.counted_at.desc())
-        )
-    )
+    if branch_ids is not None:
+        statement = statement.where(CustodyLocation.branch_id.in_(branch_ids))
+    rows = list(await session.scalars(statement.order_by(InventoryCheck.counted_at.desc())))
     return [
         {
             "id": item.id,
@@ -1005,9 +1048,8 @@ async def inventory_checks(session: SessionDep, org_id: OrgIdDep, user: UserDep)
 async def inventory_check_detail(
     check_id: UUID, session: SessionDep, org_id: OrgIdDep, user: UserDep
 ) -> dict[str, object]:
-    await mvp_service.ensure_any_operational_role(
-        session, org_id, user.id, {"ops_admin", "branch_manager", "custodian", "auditor"}
-    )
+    branch_id = await _inventory_branch(session, org_id, check_id)
+    await mvp_service.ensure_operational_access(session, org_id, user.id, branch_id, INVENTORY_ROLES)
     return await erp_service.inventory_check_detail(session, org_id, check_id)
 
 
@@ -1020,8 +1062,15 @@ async def inventory_check_detail(
 async def create_inventory_check(
     data: InventoryCheckCreate, session: SessionDep, org_id: OrgIdDep, user: UserDep
 ) -> ERPActionResult:
-    await mvp_service.ensure_any_operational_role(
-        session, org_id, user.id, {"ops_admin", "branch_manager", "custodian"}
+    branch_id = await session.scalar(
+        select(CustodyLocation.branch_id).where(
+            CustodyLocation.org_id == org_id, CustodyLocation.id == data.location_id
+        )
+    )
+    if branch_id is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Custody location not found")
+    await mvp_service.ensure_operational_access(
+        session, org_id, user.id, branch_id, {"ops_admin", "branch_manager", "custodian"}
     )
     item = await erp_service.create_inventory_check(session, org_id, user.id, data.location_id)
     await session.commit()
@@ -1040,8 +1089,9 @@ async def submit_inventory_check(
     org_id: OrgIdDep,
     user: UserDep,
 ) -> ERPActionResult:
-    await mvp_service.ensure_any_operational_role(
-        session, org_id, user.id, {"ops_admin", "branch_manager", "custodian"}
+    branch_id = await _inventory_branch(session, org_id, check_id)
+    await mvp_service.ensure_operational_access(
+        session, org_id, user.id, branch_id, {"ops_admin", "branch_manager", "custodian"}
     )
     item = await erp_service.submit_inventory_check(session, org_id, user.id, check_id, data)
     await session.commit()
@@ -1060,8 +1110,9 @@ async def recount_inventory_check(
     org_id: OrgIdDep,
     user: UserDep,
 ) -> ERPActionResult:
-    await mvp_service.ensure_any_operational_role(
-        session, org_id, user.id, {"ops_admin", "branch_manager", "custodian"}
+    branch_id = await _inventory_branch(session, org_id, check_id)
+    await mvp_service.ensure_operational_access(
+        session, org_id, user.id, branch_id, {"ops_admin", "branch_manager", "custodian"}
     )
     item = await erp_service.recount_inventory_check(session, org_id, user.id, check_id, data)
     await session.commit()

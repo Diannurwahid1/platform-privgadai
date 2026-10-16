@@ -7,7 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, status
 
 from dogeapi.deps import OrgIdDep, SessionDep, UserDep
-from dogeapi.operations import payment_service
+from dogeapi.operations import mvp_service, payment_service
 from dogeapi.operations.payment_schemas import (
     PaymentActionResult,
     PaymentAdjustmentCreate,
@@ -22,13 +22,19 @@ write_access = Depends(require_scope("org:write"))
 
 
 @router.get("/payments")
-async def payments(session: SessionDep, org_id: OrgIdDep) -> list[dict[str, object]]:
-    return await payment_service.list_receipts(session, org_id)
+async def payments(session: SessionDep, org_id: OrgIdDep, user: UserDep) -> list[dict[str, object]]:
+    branch_ids = await mvp_service.visible_branch_ids(
+        session, org_id, user.id, {"ops_admin", "branch_manager", "finance", "auditor"}
+    )
+    return await payment_service.list_receipts(session, org_id, branch_ids=branch_ids)
 
 
 @router.get("/loan-accounts")
-async def loan_accounts(session: SessionDep, org_id: OrgIdDep) -> list[dict[str, object]]:
-    return await payment_service.list_payment_accounts(session, org_id)
+async def loan_accounts(session: SessionDep, org_id: OrgIdDep, user: UserDep) -> list[dict[str, object]]:
+    branch_ids = await mvp_service.visible_branch_ids(
+        session, org_id, user.id, {"ops_admin", "branch_manager", "finance", "auditor"}
+    )
+    return await payment_service.list_payment_accounts(session, org_id, branch_ids=branch_ids)
 
 
 @router.post(
@@ -43,8 +49,11 @@ async def create_payment(
 
 
 @router.get("/payment-adjustments")
-async def adjustments(session: SessionDep, org_id: OrgIdDep) -> list[dict[str, object]]:
-    return await payment_service.list_adjustments(session, org_id)
+async def adjustments(session: SessionDep, org_id: OrgIdDep, user: UserDep) -> list[dict[str, object]]:
+    branch_ids = await mvp_service.visible_branch_ids(
+        session, org_id, user.id, {"ops_admin", "branch_manager", "finance", "auditor"}
+    )
+    return await payment_service.list_adjustments(session, org_id, branch_ids=branch_ids)
 
 
 @router.post(
@@ -62,8 +71,11 @@ async def create_adjustment(
 
 
 @router.get("/reconciliations")
-async def reconciliations(session: SessionDep, org_id: OrgIdDep) -> list[dict[str, object]]:
-    return await payment_service.list_reconciliations(session, org_id)
+async def reconciliations(session: SessionDep, org_id: OrgIdDep, user: UserDep) -> list[dict[str, object]]:
+    branch_ids = await mvp_service.visible_branch_ids(
+        session, org_id, user.id, {"ops_admin", "branch_manager", "finance", "auditor"}
+    )
+    return await payment_service.list_reconciliations(session, org_id, branch_ids=branch_ids)
 
 
 @router.post(

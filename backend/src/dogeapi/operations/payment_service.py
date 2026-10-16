@@ -450,19 +450,18 @@ async def decide_adjustment(session: AsyncSession, item: PaymentAdjustment, acto
     await session.flush()
 
 
-async def list_receipts(session: AsyncSession, org_id: UUID) -> list[dict[str, object]]:
-    rows = (
-        await session.execute(
-            select(PaymentReceipt, LoanAccount, LoanApplication)
-            .join(LoanAccount, (LoanAccount.org_id == org_id) & (LoanAccount.id == PaymentReceipt.loan_account_id))
-            .join(
-                LoanApplication, (LoanApplication.org_id == org_id) & (LoanApplication.id == LoanAccount.application_id)
-            )
-            .where(PaymentReceipt.org_id == org_id)
-            .order_by(PaymentReceipt.occurred_at.desc())
-            .limit(300)
-        )
-    ).all()
+async def list_receipts(
+    session: AsyncSession, org_id: UUID, *, branch_ids: set[UUID] | None = None
+) -> list[dict[str, object]]:
+    statement = (
+        select(PaymentReceipt, LoanAccount, LoanApplication)
+        .join(LoanAccount, (LoanAccount.org_id == org_id) & (LoanAccount.id == PaymentReceipt.loan_account_id))
+        .join(LoanApplication, (LoanApplication.org_id == org_id) & (LoanApplication.id == LoanAccount.application_id))
+        .where(PaymentReceipt.org_id == org_id)
+    )
+    if branch_ids is not None:
+        statement = statement.where(LoanApplication.branch_id.in_(branch_ids))
+    rows = (await session.execute(statement.order_by(PaymentReceipt.occurred_at.desc()).limit(300))).all()
     return [
         {
             **_receipt(item),
@@ -474,19 +473,19 @@ async def list_receipts(session: AsyncSession, org_id: UUID) -> list[dict[str, o
     ]
 
 
-async def list_payment_accounts(session: AsyncSession, org_id: UUID) -> list[dict[str, object]]:
-    rows = (
-        await session.execute(
-            select(LoanAccount, LoanApplication, Borrower, Branch)
-            .join(
-                LoanApplication, (LoanApplication.org_id == org_id) & (LoanApplication.id == LoanAccount.application_id)
-            )
-            .join(Borrower, (Borrower.org_id == org_id) & (Borrower.id == LoanApplication.borrower_id))
-            .join(Branch, (Branch.org_id == org_id) & (Branch.id == LoanApplication.branch_id))
-            .where(LoanAccount.org_id == org_id, LoanAccount.status.in_({"active", "settled"}))
-            .order_by(LoanAccount.created_at.desc())
-        )
-    ).all()
+async def list_payment_accounts(
+    session: AsyncSession, org_id: UUID, *, branch_ids: set[UUID] | None = None
+) -> list[dict[str, object]]:
+    statement = (
+        select(LoanAccount, LoanApplication, Borrower, Branch)
+        .join(LoanApplication, (LoanApplication.org_id == org_id) & (LoanApplication.id == LoanAccount.application_id))
+        .join(Borrower, (Borrower.org_id == org_id) & (Borrower.id == LoanApplication.borrower_id))
+        .join(Branch, (Branch.org_id == org_id) & (Branch.id == LoanApplication.branch_id))
+        .where(LoanAccount.org_id == org_id, LoanAccount.status.in_({"active", "settled"}))
+    )
+    if branch_ids is not None:
+        statement = statement.where(LoanApplication.branch_id.in_(branch_ids))
+    rows = (await session.execute(statement.order_by(LoanAccount.created_at.desc()))).all()
     return [
         {
             "id": account.id,
@@ -507,15 +506,18 @@ async def list_payment_accounts(session: AsyncSession, org_id: UUID) -> list[dic
     ]
 
 
-async def list_adjustments(session: AsyncSession, org_id: UUID) -> list[dict[str, object]]:
-    rows = list(
-        await session.scalars(
-            select(PaymentAdjustment)
-            .where(PaymentAdjustment.org_id == org_id)
-            .order_by(PaymentAdjustment.created_at.desc())
-            .limit(300)
-        )
+async def list_adjustments(
+    session: AsyncSession, org_id: UUID, *, branch_ids: set[UUID] | None = None
+) -> list[dict[str, object]]:
+    statement = (
+        select(PaymentAdjustment)
+        .join(LoanAccount, (LoanAccount.id == PaymentAdjustment.loan_account_id) & (LoanAccount.org_id == org_id))
+        .join(LoanApplication, (LoanApplication.id == LoanAccount.application_id) & (LoanApplication.org_id == org_id))
+        .where(PaymentAdjustment.org_id == org_id)
     )
+    if branch_ids is not None:
+        statement = statement.where(LoanApplication.branch_id.in_(branch_ids))
+    rows = list(await session.scalars(statement.order_by(PaymentAdjustment.created_at.desc()).limit(300)))
     return [
         {
             "id": row.id,
@@ -557,9 +559,14 @@ def _receipt(item: PaymentReceipt) -> dict[str, object]:
 async def create_reconciliation(
     session: AsyncSession, org_id: UUID, actor_id: UUID, data: ReconciliationCreate
 ) -> ReconciliationRun:
-    await mvp_service.ensure_any_operational_role(
+    branch_ids = await mvp_service.visible_branch_ids(
         session, org_id, actor_id, {"ops_admin", "branch_manager", "finance", "auditor"}
     )
+    if branch_ids is not None:
+        if data.branch_id is None:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Tenant-wide reconciliation requires tenant-wide access")
+        if data.branch_id not in branch_ids:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Branch is outside the assigned finance scope")
     start = datetime.combine(data.business_date, datetime.min.time(), tzinfo=UTC)
     end = start + timedelta(days=1)
     snapshot: dict[str, object]
@@ -671,15 +678,13 @@ async def create_reconciliation(
     return item
 
 
-async def list_reconciliations(session: AsyncSession, org_id: UUID) -> list[dict[str, object]]:
-    rows = list(
-        await session.scalars(
-            select(ReconciliationRun)
-            .where(ReconciliationRun.org_id == org_id)
-            .order_by(ReconciliationRun.created_at.desc())
-            .limit(300)
-        )
-    )
+async def list_reconciliations(
+    session: AsyncSession, org_id: UUID, *, branch_ids: set[UUID] | None = None
+) -> list[dict[str, object]]:
+    statement = select(ReconciliationRun).where(ReconciliationRun.org_id == org_id)
+    if branch_ids is not None:
+        statement = statement.where(ReconciliationRun.branch_id.in_(branch_ids))
+    rows = list(await session.scalars(statement.order_by(ReconciliationRun.created_at.desc()).limit(300)))
     return [
         {
             "id": row.id,
@@ -712,6 +717,11 @@ async def request_reconciliation_resolution(
     )
     if item is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Reconciliation run tidak ditemukan")
+    branch_ids = await mvp_service.visible_branch_ids(
+        session, org_id, actor_id, {"ops_admin", "branch_manager", "finance", "auditor"}
+    )
+    if branch_ids is not None and (item.branch_id is None or item.branch_id not in branch_ids):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Reconciliation is outside the assigned finance scope")
     if item.status != "exception":
         raise HTTPException(status.HTTP_409_CONFLICT, "Hanya exception yang dapat diselesaikan")
     item.status = "pending_resolution"

@@ -709,40 +709,65 @@ async def close_teller_session(
     return item
 
 
-async def finance_overview(session: AsyncSession, org_id: UUID) -> FinanceOverview:
-    cash_balance = await session.scalar(
-        select(func.coalesce(func.sum(Cashbox.balance), Decimal("0"))).where(Cashbox.org_id == org_id)
-    )
+async def finance_overview(
+    session: AsyncSession, org_id: UUID, *, branch_ids: set[UUID] | None = None
+) -> FinanceOverview:
+    cash_query = select(func.coalesce(func.sum(Cashbox.balance), Decimal("0"))).where(Cashbox.org_id == org_id)
+    if branch_ids is not None:
+        cash_query = cash_query.where(Cashbox.branch_id.in_(branch_ids))
+    cash_balance = await session.scalar(cash_query)
+
+    loan_filters = [LoanAccount.org_id == org_id, LoanAccount.status == "active"]
+    if branch_ids is not None:
+        loan_filters.append(LoanApplication.branch_id.in_(branch_ids))
     active_count = await session.scalar(
-        select(func.count(LoanAccount.id)).where(LoanAccount.org_id == org_id, LoanAccount.status == "active")
+        select(func.count(LoanAccount.id))
+        .join(LoanApplication, LoanApplication.id == LoanAccount.application_id)
+        .where(*loan_filters)
     )
+    outstanding_filters = [LoanAccount.org_id == org_id]
+    if branch_ids is not None:
+        outstanding_filters.append(LoanApplication.branch_id.in_(branch_ids))
     outstanding = (
         await session.execute(
             select(
                 func.coalesce(func.sum(LoanAccount.outstanding_principal), Decimal("0")),
                 func.coalesce(func.sum(LoanAccount.outstanding_fee), Decimal("0")),
-            ).where(LoanAccount.org_id == org_id)
+            )
+            .join(LoanApplication, LoanApplication.id == LoanAccount.application_id)
+            .where(*outstanding_filters)
         )
     ).one()
     start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
-    payments = await session.scalar(
-        select(func.coalesce(func.sum(CashTransaction.amount), Decimal("0"))).where(
+    payment_query = (
+        select(func.coalesce(func.sum(CashTransaction.amount), Decimal("0")))
+        .join(Cashbox, Cashbox.id == CashTransaction.cashbox_id)
+        .where(
             CashTransaction.org_id == org_id,
+            Cashbox.org_id == org_id,
             CashTransaction.transaction_type == "repayment",
             CashTransaction.occurred_at >= start,
         )
     )
-    open_sessions = await session.scalar(
-        select(func.count(TellerSession.id)).where(TellerSession.org_id == org_id, TellerSession.status == "open")
+    if branch_ids is not None:
+        payment_query = payment_query.where(Cashbox.branch_id.in_(branch_ids))
+    payments = await session.scalar(payment_query)
+    session_query = (
+        select(func.count(TellerSession.id))
+        .join(Cashbox, Cashbox.id == TellerSession.cashbox_id)
+        .where(TellerSession.org_id == org_id, Cashbox.org_id == org_id, TellerSession.status == "open")
     )
-    transactions = list(
-        await session.scalars(
-            select(CashTransaction)
-            .where(CashTransaction.org_id == org_id)
-            .order_by(CashTransaction.occurred_at.desc())
-            .limit(12)
-        )
+    if branch_ids is not None:
+        session_query = session_query.where(Cashbox.branch_id.in_(branch_ids))
+    open_sessions = await session.scalar(session_query)
+    transaction_query = (
+        select(CashTransaction)
+        .join(Cashbox, Cashbox.id == CashTransaction.cashbox_id)
+        .where(CashTransaction.org_id == org_id, Cashbox.org_id == org_id)
     )
+    if branch_ids is not None:
+        transaction_query = transaction_query.where(Cashbox.branch_id.in_(branch_ids))
+    transactions = list(await session.scalars(transaction_query.order_by(CashTransaction.occurred_at.desc()).limit(12)))
     return FinanceOverview(
         cash_balance=cash_balance or Decimal("0"),
         active_loan_count=int(active_count or 0),
@@ -837,22 +862,24 @@ async def financial_reports(session: AsyncSession, org_id: UUID) -> FinancialRep
     )
 
 
-async def list_collections(session: AsyncSession, org_id: UUID) -> list[dict[str, object]]:
-    rows = (
-        await session.execute(
-            select(CollectionCase, LoanAccount, LoanApplication, Borrower, Branch)
-            .join(LoanAccount, LoanAccount.id == CollectionCase.loan_account_id)
-            .join(LoanApplication, LoanApplication.id == LoanAccount.application_id)
-            .join(Borrower, Borrower.id == LoanApplication.borrower_id)
-            .join(Branch, Branch.id == LoanApplication.branch_id)
-            .where(
-                CollectionCase.org_id == org_id,
-                LoanAccount.org_id == org_id,
-                LoanApplication.org_id == org_id,
-            )
-            .order_by(CollectionCase.due_at)
+async def list_collections(
+    session: AsyncSession, org_id: UUID, *, branch_ids: set[UUID] | None = None
+) -> list[dict[str, object]]:
+    statement = (
+        select(CollectionCase, LoanAccount, LoanApplication, Borrower, Branch)
+        .join(LoanAccount, LoanAccount.id == CollectionCase.loan_account_id)
+        .join(LoanApplication, LoanApplication.id == LoanAccount.application_id)
+        .join(Borrower, Borrower.id == LoanApplication.borrower_id)
+        .join(Branch, Branch.id == LoanApplication.branch_id)
+        .where(
+            CollectionCase.org_id == org_id,
+            LoanAccount.org_id == org_id,
+            LoanApplication.org_id == org_id,
         )
-    ).all()
+    )
+    if branch_ids is not None:
+        statement = statement.where(LoanApplication.branch_id.in_(branch_ids))
+    rows = (await session.execute(statement.order_by(CollectionCase.due_at))).all()
     now = datetime.now(UTC)
     output: list[dict[str, object]] = []
     for item, account, application, borrower, branch in rows:

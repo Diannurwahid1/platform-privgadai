@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import Any
+from uuid import UUID
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from dogeapi.models import CollectionCase, LoanAccount
 
 pytestmark = pytest.mark.integration
 
@@ -66,7 +72,7 @@ async def _create_application(
 
 
 @pytest.fixture
-async def branch_matrix(client: AsyncClient) -> dict[str, Any]:
+async def branch_matrix(client: AsyncClient, db_session: AsyncSession) -> dict[str, Any]:
     owner = await _register(client, "scope-owner@example.com")
     created_org = await client.post(
         "/orgs",
@@ -123,17 +129,18 @@ async def branch_matrix(client: AsyncClient) -> dict[str, Any]:
     )
     assert product.status_code == 201, product.text
 
-    assignment = await client.post(
-        "/v1/master/staff-assignments",
-        json={
-            "user_id": member["id"],
-            "branch_id": branches[0]["id"],
-            "operational_role": "loan_officer",
-            "is_active": True,
-        },
-        headers=owner["headers"],
-    )
-    assert assignment.status_code == 201, assignment.text
+    for operational_role in ("loan_officer", "finance", "custodian"):
+        assignment = await client.post(
+            "/v1/master/staff-assignments",
+            json={
+                "user_id": member["id"],
+                "branch_id": branches[0]["id"],
+                "operational_role": operational_role,
+                "is_active": True,
+            },
+            headers=owner["headers"],
+        )
+        assert assignment.status_code == 201, assignment.text
 
     visible = await _create_application(
         client,
@@ -149,6 +156,30 @@ async def branch_matrix(client: AsyncClient) -> dict[str, Any]:
         product_id=product.json()["id"],
         customer_name="Nasabah Surabaya",
     )
+    collection_cases = []
+    for index, application in enumerate((visible, hidden), start=1):
+        loan = LoanAccount(
+            org_id=UUID(created_org.json()["id"]),
+            application_id=UUID(application["id"]),
+            account_no=f"LN-SCOPE-{index}",
+            status="active",
+            principal_amount=Decimal("7000000"),
+            total_due_amount=Decimal("7350000"),
+            outstanding_principal=Decimal("7000000"),
+            outstanding_fee=Decimal("350000"),
+            due_at=datetime.now(UTC) - timedelta(days=5),
+        )
+        db_session.add(loan)
+        await db_session.flush()
+        case = CollectionCase(
+            org_id=UUID(created_org.json()["id"]),
+            loan_account_id=loan.id,
+            due_at=loan.due_at,
+            outstanding_amount=Decimal("7350000"),
+        )
+        db_session.add(case)
+        await db_session.flush()
+        collection_cases.append(case)
     evidence = await client.post(
         f"/v1/applications/{hidden['id']}/evidence/upload",
         data={"evidence_type": "asset_photo"},
@@ -156,6 +187,29 @@ async def branch_matrix(client: AsyncClient) -> dict[str, Any]:
         headers=owner["headers"],
     )
     assert evidence.status_code == 201, evidence.text
+    cashboxes = await client.get("/v1/finance/cashboxes", headers=owner["headers"])
+    assert cashboxes.status_code == 200, cashboxes.text
+    cashbox_by_branch = {item["branch_id"]: item for item in cashboxes.json()}
+    inventory_checks = []
+    for index, branch in enumerate(branches, start=1):
+        location = await client.post(
+            "/v1/master/custody-locations",
+            json={
+                "branch_id": branch["id"],
+                "code": f"VAULT-{index}",
+                "name": f"Vault {branch['code']}",
+                "location_type": "branch_vault",
+            },
+            headers=owner["headers"],
+        )
+        assert location.status_code == 201, location.text
+        inventory = await client.post(
+            "/v1/inventory-checks",
+            json={"location_id": location.json()["id"]},
+            headers=owner["headers"],
+        )
+        assert inventory.status_code == 201, inventory.text
+        inventory_checks.append(inventory.json())
 
     return {
         "owner": owner,
@@ -163,6 +217,14 @@ async def branch_matrix(client: AsyncClient) -> dict[str, Any]:
         "visible": visible,
         "hidden": hidden,
         "evidence_id": evidence.json()["id"],
+        "visible_cashbox": cashbox_by_branch[branches[0]["id"]],
+        "hidden_cashbox": cashbox_by_branch[branches[1]["id"]],
+        "visible_inventory": inventory_checks[0],
+        "hidden_inventory": inventory_checks[1],
+        "visible_collection_id": str(collection_cases[0].id),
+        "hidden_collection_id": str(collection_cases[1].id),
+        "visible_branch_id": branches[0]["id"],
+        "hidden_branch_id": branches[1]["id"],
     }
 
 
@@ -244,6 +306,81 @@ async def test_business_audit_requires_an_audit_capable_assignment(
 ) -> None:
     response = await client.get("/v1/domain-events", headers=branch_matrix["member"]["headers"])
     assert response.status_code == 403, response.text
+
+
+async def test_finance_views_and_commands_are_branch_scoped(client: AsyncClient, branch_matrix: dict[str, Any]) -> None:
+    headers = branch_matrix["member"]["headers"]
+    cashboxes = await client.get("/v1/finance/cashboxes", headers=headers)
+    assert cashboxes.status_code == 200, cashboxes.text
+    assert [item["id"] for item in cashboxes.json()] == [branch_matrix["visible_cashbox"]["id"]]
+
+    denied = await client.post(
+        f"/v1/finance/cashboxes/{branch_matrix['hidden_cashbox']['id']}/fund",
+        json={
+            "amount": "1000000",
+            "external_reference": "SCOPE-TEST-HIDDEN",
+            "idempotency_key": "scope-test-hidden-fund",
+        },
+        headers=headers,
+    )
+    assert denied.status_code == 403, denied.text
+
+    accounts = await client.get("/v1/finance/loan-accounts", headers=headers)
+    assert accounts.status_code == 200, accounts.text
+    assert [item["application_id"] for item in accounts.json()] == [branch_matrix["visible"]["id"]]
+
+    reconciliation = await client.post(
+        "/v1/finance/reconciliations",
+        json={
+            "scope": "cash_gl",
+            "business_date": datetime.now(UTC).date().isoformat(),
+            "branch_id": branch_matrix["hidden_branch_id"],
+            "tolerance_amount": "0",
+        },
+        headers=headers,
+    )
+    assert reconciliation.status_code == 403, reconciliation.text
+
+
+async def test_regulatory_workspace_rejects_branch_finance_role(
+    client: AsyncClient, branch_matrix: dict[str, Any]
+) -> None:
+    response = await client.get("/v1/regulatory/templates", headers=branch_matrix["member"]["headers"])
+    assert response.status_code == 403, response.text
+
+
+async def test_inventory_register_and_detail_are_branch_scoped(
+    client: AsyncClient, branch_matrix: dict[str, Any]
+) -> None:
+    headers = branch_matrix["member"]["headers"]
+    register = await client.get("/v1/inventory-checks", headers=headers)
+    assert register.status_code == 200, register.text
+    assert [item["id"] for item in register.json()] == [branch_matrix["visible_inventory"]["id"]]
+
+    hidden = await client.get(
+        f"/v1/inventory-checks/{branch_matrix['hidden_inventory']['id']}",
+        headers=headers,
+    )
+    assert hidden.status_code == 403, hidden.text
+
+
+async def test_collection_register_detail_and_command_are_branch_scoped(
+    client: AsyncClient, branch_matrix: dict[str, Any]
+) -> None:
+    headers = branch_matrix["member"]["headers"]
+    register = await client.get("/v1/collections", headers=headers)
+    assert register.status_code == 200, register.text
+    assert [item["id"] for item in register.json()] == [branch_matrix["visible_collection_id"]]
+
+    hidden_id = branch_matrix["hidden_collection_id"]
+    detail = await client.get(f"/v1/collections/{hidden_id}", headers=headers)
+    assert detail.status_code == 403, detail.text
+    command = await client.post(
+        f"/v1/collections/{hidden_id}/notes",
+        json={"channel": "phone", "note": "Percobaan lintas cabang", "outcome": "contacted"},
+        headers=headers,
+    )
+    assert command.status_code == 403, command.text
 
 
 async def test_owner_retains_tenant_wide_visibility(client: AsyncClient, branch_matrix: dict[str, Any]) -> None:
