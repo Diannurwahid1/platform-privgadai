@@ -12,6 +12,7 @@ import {
   FileSearch,
   HandCoins,
   LayoutDashboard,
+  ListChecks,
   PackageSearch,
   ReceiptText,
   MessagesSquare,
@@ -41,6 +42,7 @@ export function buildPartnerNavigation(slug: string): PartnerNavGroup[] {
   const root = `/orgs/${slug}`;
   return [
     { id: "overview", label: "Overview", items: [
+      { id: "onboarding", label: "Mulai Operasi", href: `${root}/onboarding`, icon: ListChecks, match: "section" },
       { id: "overview", label: "Ringkasan", href: `${root}/overview`, aliases: [root], icon: LayoutDashboard, match: "exact" },
     ] },
     { id: "customers", label: "Customers", items: [

@@ -15,10 +15,10 @@ export default function AuthLayout({
           </Link>
           <nav className="flex gap-2 text-sm">
             <Link href="/login" className="px-3 py-1.5 hover:underline">
-              Sign in
+              Masuk
             </Link>
             <Link href="/register" className="px-3 py-1.5 hover:underline">
-              Sign up
+              Daftar
             </Link>
           </nav>
         </div>

@@ -52,7 +52,7 @@ export default function LoginPage() {
       router.refresh();
     } catch (err) {
       const apiErr = err as ApiError;
-      setErrors({ form: apiErr.detail ?? "Could not sign you in" });
+      setErrors({ form: apiErr.detail ?? "Email atau kata sandi tidak dapat diverifikasi." });
     } finally {
       setSubmitting(false);
     }
@@ -67,9 +67,9 @@ export default function LoginPage() {
     >
       <Card>
         <CardHeader>
-          <CardTitle>Welcome back</CardTitle>
+          <CardTitle>Masuk ke PrivGadai</CardTitle>
           <CardDescription>
-            Masuk ke ruang kerja PrivGadai.
+            Lanjutkan setup tenant atau pekerjaan operasional cabang Anda.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -86,18 +86,7 @@ export default function LoginPage() {
               <FieldError>{errors.email}</FieldError>
             </Field>
             <Field>
-              <Label htmlFor="mfa_code">Kode authenticator atau recovery code</Label>
-              <Input
-                id="mfa_code"
-                name="mfa_code"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                placeholder="Isi bila MFA sudah aktif"
-              />
-              <FieldError>{errors.mfa_code}</FieldError>
-            </Field>
-            <Field>
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">Kata sandi</Label>
               <Input
                 id="password"
                 name="password"
@@ -107,28 +96,39 @@ export default function LoginPage() {
               />
               <FieldError>{errors.password}</FieldError>
             </Field>
+            <Field>
+              <Label htmlFor="mfa_code">Kode MFA (opsional)</Label>
+              <Input
+                id="mfa_code"
+                name="mfa_code"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                placeholder="Isi jika MFA sudah diaktifkan"
+              />
+              <FieldError>{errors.mfa_code}</FieldError>
+            </Field>
             <FieldError>{errors.form}</FieldError>
             <Button type="submit" className="w-full" disabled={submitting}>
-              {submitting ? "Signing in…" : "Sign in"}
+              {submitting ? "Memverifikasi…" : "Masuk"}
             </Button>
           </form>
           <AuthOptions />
         </CardContent>
       </Card>
       <p className="mt-4 text-center text-sm text-muted-foreground">
-        Don&apos;t have an account?{" "}
+        Belum punya akun?{" "}
         <Link
           href="/register"
           className="font-medium text-primary hover:underline"
         >
-          Create one
+          Buat akun
         </Link>
         {" · "}
         <Link
           href="/forgot-password"
           className="font-medium text-primary hover:underline"
         >
-          Forgot password?
+          Lupa kata sandi?
         </Link>
       </p>
     </motion.div>

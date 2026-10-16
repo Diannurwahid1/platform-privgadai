@@ -453,6 +453,10 @@ export const createAssetCategory = (json: Record<string, unknown>) =>
   apiFetch<AssetCategoryItem>("/v1/master/asset-categories", { method: "POST", json });
 export const createLoanProduct = (json: Record<string, unknown>) =>
   apiFetch<LoanProductItem>("/v1/master/loan-products", { method: "POST", json });
+export const createCustodyLocation = (json: Record<string, unknown>) =>
+  apiFetch<MasterItem>("/v1/master/custody-locations", { method: "POST", json });
+export const createStaffAssignment = (json: Record<string, unknown>) =>
+  apiFetch<StaffAssignmentItem>("/v1/master/staff-assignments", { method: "POST", json });
 
 export const getApplicationDetail = (id: string) =>
   apiFetch<ApplicationDetail>(`/v1/applications/${id}`);

@@ -49,11 +49,11 @@ export default function NewOrgPage() {
         slug: parsed.data.slug || undefined,
       });
       await switchOrg(org.slug);
-      router.push(`/orgs/${org.slug}`);
+      router.push(`/orgs/${org.slug}/onboarding`);
       router.refresh();
     } catch (err) {
       const apiErr = err as ApiError;
-      setErrors({ form: apiErr.detail ?? "Could not create organization" });
+      setErrors({ form: apiErr.detail ?? "Tenant tidak dapat dibuat." });
     } finally {
       setSubmitting(false);
     }
@@ -68,31 +68,31 @@ export default function NewOrgPage() {
       >
         <Card>
           <CardHeader>
-            <CardTitle>Create organization</CardTitle>
+            <CardTitle>Buat tenant PrivGadai</CardTitle>
             <CardDescription>
-              Spin up a new workspace with you as the owner.
+              Tenant memisahkan data, pengguna, cabang, dan transaksi organisasi Anda.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
               <Field>
-                <Label htmlFor="name">Name</Label>
-                <Input id="name" name="name" required placeholder="Acme Inc." />
+                <Label htmlFor="name">Nama organisasi</Label>
+                <Input id="name" name="name" required placeholder="PT Gadai Sejahtera" />
                 <FieldError>{errors.name}</FieldError>
               </Field>
               <Field>
-                <Label htmlFor="slug">Slug (optional)</Label>
+                <Label htmlFor="slug">Kode tenant (opsional)</Label>
                 <Input
                   id="slug"
                   name="slug"
-                  placeholder="acme"
+                  placeholder="gadai-sejahtera"
                   pattern="[a-z0-9](?:[a-z0-9-]*[a-z0-9])?"
                 />
                 <FieldError>{errors.slug}</FieldError>
               </Field>
               <FieldError>{errors.form}</FieldError>
               <Button type="submit" className="w-full" disabled={submitting}>
-                {submitting ? "Creating…" : "Create organization"}
+                {submitting ? "Membuat tenant…" : "Buat tenant dan mulai setup"}
               </Button>
             </form>
           </CardContent>
