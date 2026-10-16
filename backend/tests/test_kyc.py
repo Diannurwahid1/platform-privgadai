@@ -139,6 +139,15 @@ async def test_ktp_kyc_masks_nik_encrypts_document_and_enforces_checker(
 
     switched = await client.post("/orgs/mitra-kyc/switch", headers=base_headers)
     scoped = {"Authorization": f"Bearer {switched.json()['access_token']}"}
+    preview = await client.post(
+        f"/v1/customers/{unverified_borrower.id}/kyc/ocr-preview",
+        headers=scoped,
+        files={"file": ("ktp.jpg", b"\xff\xd8\xffsynthetic-image-content\xff\xd9", "image/jpeg")},
+    )
+    assert preview.status_code == 200, preview.text
+    assert preview.json()["fields"]["nik"] == "3273010101900001"
+    assert preview.json()["fields"]["legal_name"] == "BUDI SANTOSO"
+    assert preview.json()["fields"]["birth_date"] == "1990-01-01"
     queue = await client.get("/v1/kyc/verifications", headers=scoped)
     assert queue.status_code == 200, queue.text
     queue_by_reference = {item["customer_reference"]: item for item in queue.json()}

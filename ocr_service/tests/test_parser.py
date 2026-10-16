@@ -30,3 +30,22 @@ def test_parse_ktp_labels_split_from_values() -> None:
     assert result["tempat_lahir"] == "GARUT"
     assert result["tanggal_lahir"] == "02-02-1992"
 
+
+def test_parse_ktp_header_city_and_address_components() -> None:
+    result = parse_ktp(
+        [
+            "PROVINSI DKI JAKARTA",
+            "JAKARTA BARAT",
+            "NIK : 3171234567890123",
+            "Alamat : JL. PASTI CEPAT A7/66",
+            "RT/RW : 007/008",
+            "Kel/Desa : PEGADUNGAN",
+            "Kecamatan : KALIDERES",
+        ]
+    )
+    assert result["provinsi"] == "DKI JAKARTA"
+    assert result["kabupaten_kota"] == "JAKARTA BARAT"
+    assert result["rt_rw"] == "007/008"
+    assert result["kelurahan_desa"] == "PEGADUNGAN"
+    assert result["kecamatan"] == "KALIDERES"
+

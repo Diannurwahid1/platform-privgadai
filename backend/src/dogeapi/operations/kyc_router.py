@@ -10,8 +10,9 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from sqlalchemy import select
 
 from dogeapi.deps import OrgIdDep, SessionDep, SettingsDep, UserDep
+from dogeapi.file_security import scan_upload
 from dogeapi.models import Borrower, KycVerification, LoanApplication
-from dogeapi.operations import kyc_service, mvp_service
+from dogeapi.operations import kyc_provider, kyc_service, mvp_service
 from dogeapi.operations.erp_schemas import ERPActionResult
 from dogeapi.operations.kyc_schemas import KycCreate, KycReview
 from dogeapi.security import require_scope
@@ -58,7 +59,9 @@ async def kyc_verification_queue(session: SessionDep, org_id: OrgIdDep, user: Us
             "status": (
                 "expired"
                 if item and item.status == "verified" and item.expires_at and item.expires_at <= datetime.now(UTC)
-                else item.status if item else "not_started"
+                else item.status
+                if item
+                else "not_started"
             ),
             "risk_level": item.risk_level if item else "unassessed",
             "verification_method": item.verification_method if item else None,
@@ -114,6 +117,42 @@ async def start_customer_kyc(
     item = await kyc_service.create_verification(session, settings, org_id, user.id, customer_id, data)
     await session.commit()
     return {"id": item.id, "status": item.status, "message": "Data KTP direkam; unggah bukti untuk pemeriksaan"}
+
+
+@router.post("/{customer_id}/kyc/ocr-preview", dependencies=[Depends(require_scope("org:write"))])
+async def preview_ktp_ocr(
+    customer_id: UUID,
+    file: Annotated[UploadFile, File()],
+    session: SessionDep,
+    settings: SettingsDep,
+    org_id: OrgIdDep,
+    user: UserDep,
+) -> dict[str, object]:
+    """Extract KTP fields before a verification is created; uploaded bytes are not persisted."""
+    await mvp_service.ensure_customer_access(
+        session, org_id, user.id, customer_id, {"ops_admin", "branch_manager", "loan_officer", "reviewer"}
+    )
+    allowed = {"image/jpeg", "image/png", "image/webp"}
+    if file.content_type not in allowed:
+        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Foto KTP harus berupa JPEG, PNG, atau WebP")
+    content = await file.read(10 * 1024 * 1024 + 1)
+    if not content:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Foto KTP kosong")
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "Foto KTP melebihi 10 MB")
+    scan = await scan_upload(content, file.content_type or "application/octet-stream", settings)
+    if scan.status != "clean":
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Foto KTP gagal pemeriksaan keamanan")
+    result = await kyc_provider.run_ocr(
+        settings, content, file.content_type or "application/octet-stream", file.filename or "ktp.jpg"
+    )
+    fields = kyc_provider.normalize_ocr_autofill(result.payload)
+    return {
+        "provider": result.provider_name,
+        "reference": result.reference,
+        "fields": fields,
+        "message": "Data KTP berhasil dibaca. Periksa hasil sebelum menyimpan KYC.",
+    }
 
 
 @router.post(
@@ -184,9 +223,7 @@ async def run_kyc_ocr(
     await mvp_service.ensure_customer_access(
         session, org_id, user.id, customer_id, {"ops_admin", "branch_manager", "loan_officer", "reviewer"}
     )
-    item = await kyc_service.run_ocr_check(
-        session, settings, org_id, user.id, customer_id, verification_id
-    )
+    item = await kyc_service.run_ocr_check(session, settings, org_id, user.id, customer_id, verification_id)
     await session.commit()
     return {
         "id": item.id,
@@ -211,8 +248,6 @@ async def review_customer_kyc(
     await mvp_service.ensure_customer_access(
         session, org_id, user.id, customer_id, {"ops_admin", "branch_manager", "reviewer"}
     )
-    item = await kyc_service.review_verification(
-        session, org_id, user.id, customer_id, verification_id, data, settings
-    )
+    item = await kyc_service.review_verification(session, org_id, user.id, customer_id, verification_id, data, settings)
     await session.commit()
     return {"id": item.id, "status": item.status, "message": "Keputusan KYC tercatat"}

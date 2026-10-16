@@ -121,6 +121,9 @@ def parse_ktp(lines: list[str], scores: list[float] | None = None) -> dict[str, 
             (("ALAMAT",), "alamat"),
             (("PROVINSI",), "provinsi"),
             (("KABUPATEN/KOTA", "KABUPATEN", "KOTA"), "kabupaten_kota"),
+            (("RT/RW",), "rt_rw"),
+            (("KEL/DESA", "KELURAHAN/DESA", "KELURAHAN"), "kelurahan_desa"),
+            (("KECAMATAN",), "kecamatan"),
             (("JENIS KELAMIN",), "jenis_kelamin"),
             (("PEKERJAAN",), "pekerjaan"),
             (("KEWARGANEGARAAN",), "kewarganegaraan"),
@@ -130,6 +133,12 @@ def parse_ktp(lines: list[str], scores: list[float] | None = None) -> dict[str, 
             value = _field_value(clean, index, labels)
             if value:
                 result[key] = value
+
+    # The regency/city is commonly printed as a bare second header line on KTP.
+    if "kabupaten_kota" not in result and len(clean) > 1 and clean[0].upper().startswith("PROVINSI"):
+        candidate = clean[1].upper().strip()
+        if candidate and not candidate.startswith(("NIK", "NAMA")):
+            result["kabupaten_kota"] = candidate
 
     if scores:
         result["confidence"] = round(sum(scores) / len(scores), 4)

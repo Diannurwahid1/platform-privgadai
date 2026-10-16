@@ -19,6 +19,38 @@ def _settings(**overrides: object) -> Settings:
     return Settings(**values)
 
 
+def test_normalize_ocr_autofill_maps_indonesian_ktp_fields() -> None:
+    result = kyc_provider.normalize_ocr_autofill(
+        {
+            "nik": "3171234567890123",
+            "nama": "Mira Setiawan",
+            "tempat_lahir": "Jakarta",
+            "tanggal_lahir": "18-02-1986",
+            "jenis_kelamin": "PEREMPUAN",
+            "alamat": "JL. PASTI CEPAT A7/66",
+            "rt_rw": "007/008",
+            "kelurahan_desa": "PEGADUNGAN",
+            "kecamatan": "KALIDERES",
+            "provinsi": "DKI Jakarta",
+            "kabupaten_kota": "Jakarta Barat",
+            "pekerjaan": "Pegawai Swasta",
+            "confidence": 0.94,
+        }
+    )
+    assert result == {
+        "nik": "3171234567890123",
+        "legal_name": "MIRA SETIAWAN",
+        "birth_place": "JAKARTA",
+        "birth_date": "1986-02-18",
+        "gender": "female",
+        "address": "JL. PASTI CEPAT A7/66, RT/RW 007/008, Kel/Desa PEGADUNGAN, Kec. KALIDERES",
+        "province": "DKI JAKARTA",
+        "city": "JAKARTA BARAT",
+        "occupation": "PEGAWAI SWASTA",
+        "confidence": 0.94,
+    }
+
+
 @respx.mock
 async def test_paddleocr_normalizes_payload_and_discards_raw_lines() -> None:
     respx.post("http://localhost:8001/scan/ktp").mock(

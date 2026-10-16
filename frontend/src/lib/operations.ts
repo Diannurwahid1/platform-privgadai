@@ -298,6 +298,16 @@ export type KycProviderCapabilities = {
   ocr: { enabled: boolean; provider: string; purpose: "internal_document_verification" };
 };
 
+export type KycOcrPreview = {
+  provider: string;
+  reference: string | null;
+  message: string;
+  fields: {
+    nik: string; legal_name: string; birth_place: string; birth_date: string; gender: string;
+    address: string; province: string; city: string; occupation: string; confidence: number | null;
+  };
+};
+
 export type CustomerKyc = { customer_id: string; current_status: string; verifications: KycVerification[] };
 export type KycQueueItem = {
   id: string | null; customer_id: string; customer_reference: string; customer_name: string; national_id_masked: string | null;
@@ -611,6 +621,10 @@ export const listKycVerifications = () => apiFetch<KycQueueItem[]>("/v1/kyc/veri
 export const getKycProviderCapabilities = () => apiFetch<KycProviderCapabilities>("/v1/kyc/provider-capabilities");
 export const startCustomerKyc = (id: string, json: Record<string, unknown>) =>
   apiFetch<{ id: string; status: string; message: string }>(`/v1/customers/${id}/kyc`, { method: "POST", json });
+export const previewKycOcr = (customerId: string, file: File) => {
+  const form = new FormData(); form.append("file", file);
+  return apiUpload<KycOcrPreview>(`/v1/customers/${customerId}/kyc/ocr-preview`, form);
+};
 export const uploadKycDocument = (customerId: string, verificationId: string, file: File, documentSide = "ktp_front") => {
   const form = new FormData(); form.append("document_side", documentSide); form.append("file", file);
   return apiUpload<ActionResult>(`/v1/customers/${customerId}/kyc/${verificationId}/documents`, form);
