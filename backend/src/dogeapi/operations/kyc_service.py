@@ -278,7 +278,7 @@ async def _record_provider_check(
         provider_reference=result.reference,
         request_fingerprint=request_fingerprint,
         response_ciphertext=encrypt_pii(settings, json.dumps(payload, ensure_ascii=False, default=str)),
-        officially_verified=result.officially_verified,
+        internal_verified=result.internal_verified,
         completed_at=datetime.now(UTC),
     )
     session.add(item)
@@ -294,7 +294,7 @@ async def _record_provider_check(
             to_status=verification.status,
             reason=(
                 f"{result.provider_name}/{result.environment}: {result.status}; "
-                f"officially_verified={result.officially_verified}"
+                f"internal_verified={result.internal_verified}"
             ),
         )
     )
@@ -316,36 +316,21 @@ async def run_ocr_check(
     result = await kyc_provider.run_ocr(settings, content, document.content_type, document.file_name)
     nik = decrypt_pii(settings, verification.national_id_ciphertext or "")
     payload = dict(result.payload)
-    payload["field_matches"] = _ocr_comparison(verification, nik, payload)
+    field_matches = _ocr_comparison(verification, nik, payload)
+    payload["field_matches"] = field_matches
+    required_matches = (field_matches["nik"], field_matches["legal_name"], field_matches["birth_date"])
+    internal_verified = all(value is True for value in required_matches)
+    payload["internal_verified"] = internal_verified
+    result = kyc_provider.ProviderResult(
+        provider_name=result.provider_name,
+        environment=result.environment,
+        status="matched" if internal_verified else "needs_review",
+        reference=result.reference,
+        payload=result.payload,
+        internal_verified=internal_verified,
+    )
     return await _record_provider_check(
         session, settings, verification, actor_id, "ocr", document.sha256, result, payload
-    )
-
-
-async def run_identity_check(
-    session: AsyncSession,
-    settings: Settings,
-    org_id: UUID,
-    actor_id: UUID,
-    borrower_id: UUID,
-    verification_id: UUID,
-) -> KycProviderCheck:
-    verification = await _verification(session, org_id, borrower_id, verification_id)
-    await _ktp_document(session, org_id, verification.id)
-    nik = decrypt_pii(settings, verification.national_id_ciphertext or "")
-    reference_id = f"KYC-{str(verification.id).replace('-', '')[:24]}"
-    result = await kyc_provider.run_identity_verification(
-        settings,
-        nik=nik,
-        legal_name=verification.legal_name,
-        birth_date=verification.birth_date.strftime("%d-%m-%Y"),
-        reference_id=reference_id,
-    )
-    fingerprint = hashlib.sha256(
-        f"{verification.nik_fingerprint}:{verification.legal_name}:{verification.birth_date}".encode()
-    ).hexdigest()
-    return await _record_provider_check(
-        session, settings, verification, actor_id, "identity_verification", fingerprint, result, result.payload
     )
 
 
@@ -387,21 +372,21 @@ async def review_verification(
             raise HTTPException(status.HTTP_409_CONFLICT, "Foto KTP belum lulus malware scanning")
         if data.sanctions_match:
             raise HTTPException(status.HTTP_409_CONFLICT, "Sanctions match memerlukan eskalasi EDD sebelum verifikasi")
-        if item.verification_method == "electronic_provider":
+        if item.verification_method in {"ocr_internal", "electronic_provider"}:
             provider_check = await session.scalar(
                 select(KycProviderCheck)
                 .where(
                     KycProviderCheck.org_id == org_id,
                     KycProviderCheck.verification_id == item.id,
-                    KycProviderCheck.check_type == "identity_verification",
+                    KycProviderCheck.check_type == "ocr",
                 )
                 .order_by(KycProviderCheck.completed_at.desc())
             )
-            if provider_check is None or provider_check.status == "not_matched":
-                raise HTTPException(status.HTTP_409_CONFLICT, "Identity provider check yang sesuai wajib tersedia")
-            active_settings = settings or get_settings()
-            if active_settings.KYC_REQUIRE_LIVE_IDV_FOR_ELECTRONIC and not provider_check.officially_verified:
-                raise HTTPException(status.HTTP_409_CONFLICT, "Verifikasi elektronik memerlukan hasil live resmi")
+            if provider_check is None or provider_check.status != "matched":
+                raise HTTPException(
+                    status.HTTP_409_CONFLICT,
+                    "Hasil PaddleOCR yang cocok untuk NIK, nama, dan tanggal lahir wajib tersedia",
+                )
 
     previous = item.status
     item.status = data.decision
@@ -481,7 +466,7 @@ async def serialize_customer_kyc(
                     "environment": check.environment,
                     "status": check.status,
                     "provider_reference": check.provider_reference,
-                    "officially_verified": check.officially_verified,
+                    "internal_verified": check.internal_verified,
                     "result": payload,
                     "requested_by_user_id": check.requested_by_user_id,
                     "completed_at": check.completed_at,

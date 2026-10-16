@@ -58,15 +58,10 @@ class Settings(BaseSettings):
     STEP_UP_TTL_MINUTES: int = 10
     PRIVILEGED_MFA_ENFORCED: bool = False
 
-    KYC_OCR_PROVIDER: Literal["disabled", "local_http", "verihubs"] = "disabled"
+    KYC_OCR_PROVIDER: Literal["disabled", "paddle_http"] = "disabled"
     KYC_OCR_BASE_URL: str = "http://localhost:8001"
     KYC_OCR_API_KEY: str = ""
-    KYC_IDV_MODE: Literal["disabled", "verihubs_sandbox", "verihubs_live"] = "disabled"
-    KYC_IDV_URL: str = "https://api.verihubs.com/v1/data-verification/id-verification/sandbox"
-    VERIHUBS_APP_ID: str = ""
-    VERIHUBS_API_KEY: str = ""
-    KYC_PROVIDER_TIMEOUT_SECONDS: int = 30
-    KYC_REQUIRE_LIVE_IDV_FOR_ELECTRONIC: bool = False
+    KYC_OCR_TIMEOUT_SECONDS: int = 60
 
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3001"
 
@@ -165,14 +160,6 @@ class Settings(BaseSettings):
                 raise ValueError("MALWARE_SCANNER_MODE=clamav is required in production")
             if not self.PRIVILEGED_MFA_ENFORCED:
                 raise ValueError("PRIVILEGED_MFA_ENFORCED must be true in production")
-            if self.KYC_IDV_MODE == "verihubs_sandbox":
-                raise ValueError("KYC_IDV_MODE cannot use a sandbox provider in production")
-        if (
-            self.KYC_OCR_PROVIDER == "verihubs" or self.KYC_IDV_MODE.startswith("verihubs_")
-        ) and (not self.VERIHUBS_APP_ID or not self.VERIHUBS_API_KEY):
-            raise ValueError("VERIHUBS_APP_ID and VERIHUBS_API_KEY are required for Verihubs")
-        if self.KYC_IDV_MODE == "verihubs_live" and "sandbox" in self.KYC_IDV_URL.lower():
-            raise ValueError("KYC_IDV_URL must be an approved live endpoint when verihubs_live is enabled")
         should_validate_integrations = self.APP_ENV != "test"
 
         if should_validate_integrations and self.FEATURE_EMAIL_DELIVERY:

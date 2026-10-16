@@ -163,5 +163,5 @@ class KycProviderCheck(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     provider_reference: Mapped[str | None] = mapped_column(String(160), nullable=True)
     request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
     response_ciphertext: Mapped[str] = mapped_column(Text(), nullable=False)
-    officially_verified: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=False, server_default="false")
+    internal_verified: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=False, server_default="false")
     completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

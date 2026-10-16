@@ -287,14 +287,13 @@ export type KycVerification = {
 
 export type KycProviderCheck = {
   id: string; check_type: "ocr" | "identity_verification"; provider_name: string;
-  environment: "local" | "sandbox" | "live" | "provider"; status: string;
-  provider_reference: string | null; officially_verified: boolean;
+  environment: "internal" | "local" | "sandbox" | "live" | "provider"; status: string;
+  provider_reference: string | null; internal_verified: boolean;
   result: Record<string, unknown>; requested_by_user_id: string; completed_at: string;
 };
 
 export type KycProviderCapabilities = {
-  ocr: { enabled: boolean; provider: string; purpose: "extraction_only" };
-  identity_verification: { enabled: boolean; provider: string; environment: "sandbox" | "live" | "disabled" };
+  ocr: { enabled: boolean; provider: string; purpose: "internal_document_verification" };
 };
 
 export type CustomerKyc = { customer_id: string; current_status: string; verifications: KycVerification[] };
@@ -613,9 +612,7 @@ export const uploadKycDocument = (customerId: string, verificationId: string, fi
 export const reviewCustomerKyc = (customerId: string, verificationId: string, json: Record<string, unknown>) =>
   apiFetch<{ id: string; status: string; message: string }>(`/v1/customers/${customerId}/kyc/${verificationId}/review`, { method: "POST", json });
 export const runKycOcr = (customerId: string, verificationId: string) =>
-  apiFetch<{ id: string; status: string; officially_verified: boolean; message: string }>(`/v1/customers/${customerId}/kyc/${verificationId}/provider/ocr`, { method: "POST" });
-export const runKycIdentityVerification = (customerId: string, verificationId: string) =>
-  apiFetch<{ id: string; status: string; officially_verified: boolean; environment: string; message: string }>(`/v1/customers/${customerId}/kyc/${verificationId}/provider/identity-verification`, { method: "POST" });
+  apiFetch<{ id: string; status: string; internal_verified: boolean; message: string }>(`/v1/customers/${customerId}/kyc/${verificationId}/provider/ocr`, { method: "POST" });
 export const listApprovals = () => apiFetch<ApprovalQueueItem[]>("/v1/approvals");
 export const decideApproval = (id: string, decision: "approved" | "rejected", reason: string) =>
   apiFetch<{ id: string; status: string; message: string }>(`/v1/approvals/${id}/decision`, { method: "POST", json: { decision, reason } });

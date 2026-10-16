@@ -17,7 +17,7 @@ class KycCreate(BaseModel):
     province: str = Field(min_length=2, max_length=100)
     city: str = Field(min_length=2, max_length=100)
     occupation: str | None = Field(default=None, max_length=120)
-    verification_method: str = Field(default="manual_branch", pattern="^(manual_branch|electronic_provider)$")
+    verification_method: str = Field(default="ocr_internal", pattern="^(manual_branch|ocr_internal|electronic_provider)$")
     provider_name: str | None = Field(default=None, max_length=80)
     provider_reference: str | None = Field(default=None, max_length=120)
 

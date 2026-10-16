@@ -22,7 +22,7 @@ PrivGadai saat ini adalah **MVP internal/pilot**. Fondasi tenant, cabang, alur p
 7. [KYC, CDD, dan identitas nasabah](./07-kyc-cdd-implementation.md)
 8. [Approval control dan separation of duty](./08-approval-control-implementation.md)
 9. [Production readiness dan runbook operasi](./09-production-readiness.md)
-10. [Integrasi OCR KTP dan identity provider](./10-kyc-provider-integration.md)
+10. [Integrasi KYC PaddleOCR](./10-kyc-paddleocr-integration.md)
 
 ## Prinsip keputusan
 

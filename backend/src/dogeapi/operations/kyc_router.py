@@ -61,15 +61,8 @@ async def provider_capabilities(settings: SettingsDep) -> dict[str, object]:
     return {
         "ocr": {
             "enabled": settings.KYC_OCR_PROVIDER != "disabled",
-            "provider": settings.KYC_OCR_PROVIDER,
-            "purpose": "extraction_only",
-        },
-        "identity_verification": {
-            "enabled": settings.KYC_IDV_MODE != "disabled",
-            "provider": "verihubs" if settings.KYC_IDV_MODE != "disabled" else "disabled",
-            "environment": "sandbox" if settings.KYC_IDV_MODE == "verihubs_sandbox" else "live"
-            if settings.KYC_IDV_MODE == "verihubs_live"
-            else "disabled",
+            "provider": "paddleocr" if settings.KYC_OCR_PROVIDER != "disabled" else "disabled",
+            "purpose": "internal_document_verification",
         },
     }
 
@@ -181,37 +174,10 @@ async def run_kyc_ocr(
     return {
         "id": item.id,
         "status": item.status,
-        "officially_verified": False,
-        "message": "OCR selesai. Hasil ekstraksi wajib dibandingkan oleh petugas.",
-    }
-
-
-@router.post(
-    "/{customer_id}/kyc/{verification_id}/provider/identity-verification",
-    dependencies=[Depends(require_scope("org:write"))],
-)
-async def run_kyc_identity_verification(
-    customer_id: UUID,
-    verification_id: UUID,
-    session: SessionDep,
-    settings: SettingsDep,
-    org_id: OrgIdDep,
-    user: UserDep,
-) -> dict[str, object]:
-    await mvp_service.ensure_customer_access(
-        session, org_id, user.id, customer_id, {"ops_admin", "branch_manager", "loan_officer", "reviewer"}
-    )
-    item = await kyc_service.run_identity_check(
-        session, settings, org_id, user.id, customer_id, verification_id
-    )
-    await session.commit()
-    label = "verifikasi live resmi" if item.officially_verified else "simulasi sandbox/provider evidence"
-    return {
-        "id": item.id,
-        "status": item.status,
-        "officially_verified": item.officially_verified,
-        "environment": item.environment,
-        "message": f"Identity check selesai sebagai {label}.",
+        "internal_verified": item.status == "matched",
+        "message": "PaddleOCR selesai dan data utama cocok. Siap untuk keputusan checker."
+        if item.status == "matched"
+        else "PaddleOCR selesai, tetapi ada data berbeda atau tidak terbaca. Periksa ulang KTP.",
     }
 
 

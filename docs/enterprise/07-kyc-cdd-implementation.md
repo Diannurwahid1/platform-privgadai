@@ -49,10 +49,10 @@ Kontrak adapter berikutnya mencakup correlation ID, versi provider, hasil match 
 - [x] Maker-checker dan alasan keputusan.
 - [x] Guard KYC sebelum appraisal.
 - [x] Event KYC pada Audit Explorer.
-- [ ] Aktivasi adapter provider e-KYC resmi dengan kontrak dan kredensial live.
-  - Adapter Verihubs sandbox/live, pemisahan status simulasi, encrypted provider evidence, serta production guard sudah tersedia; aktivasi live masih membutuhkan kredensial dan persetujuan provider.
+- [x] Aktivasi verifikasi dokumen internal tanpa provider eksternal.
+  - Verifikasi dokumen menggunakan PaddleOCR lokal dan tidak bergantung pada Verihubs.
 - [x] OCR terkontrol dan perbandingan atribut.
-  - Adapter HTTP lokal dan Verihubs Extract KTP tersedia. OCR membandingkan NIK, nama, dan tanggal lahir tanpa mengubah data KYC secara otomatis.
+  - PaddleOCR membandingkan NIK, nama, dan tanggal lahir. Hasil cocok menjadi evidence internal dan keputusan akhir tetap melalui checker.
 - [ ] Face match dan liveness provider.
 - [ ] Screening PEP, sanctions, adverse media, dan EDD case.
 - [x] Malware scanner, karantina, dan authorized evidence metadata.

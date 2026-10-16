@@ -82,18 +82,24 @@ async def test_ktp_kyc_masks_nik_encrypts_document_and_enforces_checker(
         _settings: Settings, _content: bytes, _content_type: str, _file_name: str
     ) -> kyc_provider.ProviderResult:
         return kyc_provider.ProviderResult(
-            provider_name="local_http",
-            environment="local",
+            provider_name="paddleocr",
+            environment="internal",
             status="completed",
             reference="ocr-test-001",
-            payload={"nik": "3273010101900001", "nama": "BUDI SANTOSO", "confidence": 0.98},
+            payload={
+                "nik": "3273010101900001",
+                "nama": "BUDI SANTOSO",
+                "tanggal_lahir": "01-01-1990",
+                "confidence": 0.98,
+            },
         )
 
     monkeypatch.setattr(kyc_provider, "run_ocr", fake_ocr)
     provider_check = await kyc_service.run_ocr_check(
         db_session, settings, verification.org_id, maker.id, borrower.id, verification.id
     )
-    assert provider_check.officially_verified is False
+    assert provider_check.internal_verified is True
+    assert provider_check.status == "matched"
     assert "3273010101900001" not in provider_check.response_ciphertext
     serialized = await kyc_service.serialize_customer_kyc(
         db_session, verification.org_id, borrower.id, settings
@@ -103,7 +109,7 @@ async def test_ktp_kyc_masks_nik_encrypts_document_and_enforces_checker(
     assert provider_result["result"]["field_matches"] == {  # type: ignore[index]
         "nik": True,
         "legal_name": True,
-        "birth_date": None,
+        "birth_date": True,
     }
 
     with pytest.raises(Exception) as maker_error:

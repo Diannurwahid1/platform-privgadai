@@ -10,6 +10,10 @@ node_modules/
 **/node_modules/
 *.log
 .tmp/
+ocr_service/.venv/
+ocr_service/__pycache__/
+ocr_service/tests/__pycache__/
+ocr_service/*.egg-info/
 .uv-cache/
 .uv-python/
 .pnpm-store/
