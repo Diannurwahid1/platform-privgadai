@@ -1,5 +1,5 @@
 /**
- * Thin HTTP client that proxies through the Next.js BFF rewrite at
+ * Thin HTTP client that proxies through the Next.js BFF route at
  * /api/backend/* so the browser never speaks to the FastAPI service
  * directly and cookies stay first-party.
  *
