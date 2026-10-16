@@ -1055,8 +1055,46 @@ async def verify_settlement(
         return existing_verification
     if not can_transition(LOAN_TRANSITIONS, account.status, "settled"):
         raise _conflict(f"Cannot settle loan in {account.status} status")
-    if data.settlement_type == "repayment" and data.amount != account.total_due_amount:
+    if data.settlement_type == "repayment" and data.amount != account.outstanding_principal + account.outstanding_fee:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Repayment amount must equal total due")
+    if data.settlement_type == "repayment":
+        from dogeapi.operations import payment_service
+        from dogeapi.operations.payment_schemas import PaymentCreate
+
+        receipt = await payment_service.record_payment(
+            session,
+            org_id,
+            actor_id,
+            PaymentCreate(
+                loan_account_id=account.id,
+                amount=data.amount,
+                channel="bank_transfer",
+                external_reference=data.external_reference,
+                idempotency_key=data.idempotency_key,
+            ),
+        )
+        item = SettlementVerification(
+            org_id=org_id,
+            application_id=data.application_id,
+            verified_by_user_id=actor_id,
+            settlement_type=data.settlement_type,
+            external_reference=data.external_reference,
+            amount=data.amount,
+            status="verified",
+        )
+        session.add(item)
+        await session.flush()
+        _add_collateral_event(
+            session,
+            org_id,
+            data.application_id,
+            actor_id,
+            "settled",
+            "Settlement verified through payment ledger",
+            event_metadata={"receipt_no": receipt.receipt_no, "reference": data.external_reference},
+        )
+        await session.flush()
+        return item
     item = SettlementVerification(
         org_id=org_id,
         verified_by_user_id=actor_id,

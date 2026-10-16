@@ -9,9 +9,11 @@ import {
   ContactRound,
   IdCard,
   FileCheck2,
+  FileSearch,
   HandCoins,
   LayoutDashboard,
   PackageSearch,
+  ReceiptText,
   MessagesSquare,
   Scale,
   ScrollText,
@@ -55,8 +57,10 @@ export function buildPartnerNavigation(slug: string): PartnerNavGroup[] {
     ] },
     { id: "finance", label: "Finance", items: [
       { id: "teller", label: "Teller & Cash", href: `${root}/finance/teller`, exactAliases: [`${root}/finance`], icon: BadgeDollarSign, match: "section" },
+      { id: "payments", label: "Payments", href: `${root}/finance/payments`, icon: ReceiptText, match: "section" },
       { id: "collections", label: "Collections", href: `${root}/finance/collections`, icon: HandCoins, match: "section" },
       { id: "ledger", label: "General Ledger", href: `${root}/finance/general-ledger`, icon: BookOpenCheck, match: "section" },
+      { id: "reconciliation", label: "Reconciliation", href: `${root}/finance/reconciliation`, icon: FileSearch, match: "section" },
     ] },
     { id: "reports", label: "Reports", items: [
       { id: "financial", label: "Financial & BI", href: `${root}/reports/financial`, exactAliases: [`${root}/reports`], icon: BarChart3, match: "section" },

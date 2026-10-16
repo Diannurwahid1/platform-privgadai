@@ -386,6 +386,28 @@ export type ConfigurationPreview = {
   changes: Array<{ field: string; before: unknown; after: unknown }>;
   impact: { domain: string; key: string; requires_approval: boolean; supersedes_id: string | null };
 };
+export type PaymentAccount = {
+  id: string; account_no: string; application_id: string; application_no: string; borrower_name: string;
+  branch_id: string; branch_code: string; status: string; outstanding_principal: number;
+  outstanding_fee: number; total_outstanding: number; paid_amount: number; due_at: string | null;
+};
+export type PaymentReceipt = {
+  id: string; loan_account_id: string; account_no: string; application_id: string; application_no: string;
+  receipt_no: string; channel: string; amount: number; allocated_fee: number; allocated_principal: number;
+  status: string; external_reference: string; received_by_user_id: string; occurred_at: string;
+};
+export type PaymentAdjustment = {
+  id: string; loan_account_id: string; payment_receipt_id: string | null; adjustment_type: string;
+  component: string; amount: number; allocated_fee: number; allocated_principal: number; status: string;
+  reason: string; external_reference: string; requested_by_user_id: string; approved_by_user_id: string | null;
+  posted_at: string | null; created_at: string;
+};
+export type ReconciliationRun = {
+  id: string; branch_id: string | null; scope: string; business_date: string; status: string;
+  expected_amount: number; observed_amount: number; variance_amount: number; tolerance_amount: number;
+  exception_count: number; snapshot: Record<string, unknown>; resolution_note: string | null;
+  resolved_by_user_id: string | null; resolved_at: string | null; created_at: string;
+};
 
 export const listBranches = () => apiFetch<BranchItem[]>("/v1/master/branches");
 export const listAssetCategories = () =>
@@ -587,4 +609,16 @@ export const cloneConfiguration = (id: string, effective_from: string, change_su
   });
 export const applyDueConfigurations = () =>
   apiFetch<{ count: number; message: string }>("/v1/configurations/apply-due", { method: "POST" });
+export const listPaymentAccounts = () => apiFetch<PaymentAccount[]>("/v1/finance/loan-accounts");
+export const listPayments = () => apiFetch<PaymentReceipt[]>("/v1/finance/payments");
+export const createPayment = (json: Record<string, unknown>) =>
+  apiFetch<{ id: string; status: string; message: string }>("/v1/finance/payments", { method: "POST", json });
+export const listPaymentAdjustments = () => apiFetch<PaymentAdjustment[]>("/v1/finance/payment-adjustments");
+export const createPaymentAdjustment = (json: Record<string, unknown>) =>
+  apiFetch<{ id: string; status: string; message: string }>("/v1/finance/payment-adjustments", { method: "POST", json });
+export const listReconciliations = () => apiFetch<ReconciliationRun[]>("/v1/finance/reconciliations");
+export const createReconciliation = (json: Record<string, unknown>) =>
+  apiFetch<{ id: string; status: string; message: string }>("/v1/finance/reconciliations", { method: "POST", json });
+export const requestReconciliationResolution = (id: string, resolution_note: string) =>
+  apiFetch<{ id: string; status: string; message: string }>(`/v1/finance/reconciliations/${id}/resolution`, { method: "POST", json: { resolution_note } });
 

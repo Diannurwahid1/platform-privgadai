@@ -56,6 +56,7 @@ from dogeapi.models.mvp import (
 from dogeapi.models.oauth_account import OAuthAccount
 from dogeapi.models.operations import ApplicationStatusHistory, Asset, Borrower, Branch, LoanApplication
 from dogeapi.models.organization import Organization
+from dogeapi.models.payments import PaymentAdjustment, PaymentReceipt, ReconciliationRun
 from dogeapi.models.subscription import Subscription
 from dogeapi.models.user import User
 
@@ -113,7 +114,10 @@ __all__ = (
     "Offer",
     "Organization",
     "PawnAgreement",
+    "PaymentAdjustment",
+    "PaymentReceipt",
     "PickupTask",
+    "ReconciliationRun",
     "RegulatoryReportRun",
     "RegulatoryReportTemplate",
     "Role",

@@ -15,7 +15,8 @@ Dokumen ini menjadi daftar kerja teknis aktif berdasarkan business blueprint dan
 | Custody | passport, pickup, receive/store/release, mutasi vault dua petugas, seal chain | QR scan, proof-of-handover signature, insurance workflow |
 | Stock opname | snapshot register, blind first count, variance, recount user berbeda, approval | evidence per variance, investigation otomatis, cycle-count scheduler |
 | Teller | exclusive cashbox, opening/closing count, selisih wajib alasan, approval supervisor, history | denomination count, tolerance matrix, cash transfer, branch EOD |
-| Accounting | COA dasar, balanced journal, drill-down, reversal approval, period close/lock | posting-rule configurator, reconciliation workbench, controlled reopen |
+| Payment | partial/full payment, receipt unik, alokasi fee→principal, idempotency, teller guard, refund/reversal/waiver/adjustment approval, contra journal | payment gateway callback, receipt PDF/signature, configurable allocation waterfall |
+| Accounting | COA dasar, balanced journal, drill-down, reversal approval, period close/lock, cash/loan/bank reconciliation snapshot dan exception approval | posting-rule configurator, bank statement file adapter, controlled reopen |
 | Collection | case detail, strategy/stage, SLA, notes, PTP, broken-promise escalation | contact policy versioning, evidence, legal handoff, channel integration |
 | Incident/exception | real case register, branch scope, SLA, owner, RCA/CAPA, event log, collateral hold, approval resolution, reopen | evidence case, taxonomy versioning, multi-aggregate relation, CAPA analytics |
 | Complaint/support | tiket unik, Customer 360, branch scope, owner, response/resolution SLA, komunikasi, escalation, outcome, compensation decision, approval, reopen | evidence, channel adapter, refund posting, regulator acknowledgement, taxonomy versioning |
@@ -29,8 +30,10 @@ Dokumen ini menjadi daftar kerja teknis aktif berdasarkan business blueprint dan
 ## P0 — sebelum pilot operasional terkontrol
 
 - [ ] Lengkapi branch/role/object authorization tests pada seluruh detail, command, export, dan file.
-- [ ] Tambahkan payment allocation rule, receipt numbering, refund, waiver, adjustment, dan contra posting.
-- [ ] Bangun reconciliation workbench untuk cashbox, loan subledger, GL, dan bank statement.
+- [x] Tambahkan payment allocation rule, receipt numbering, refund, waiver, adjustment, dan contra posting.
+- [x] Bangun reconciliation workbench untuk cashbox, loan subledger, GL, dan bank statement.
+  - Workbench membandingkan cash transaction ↔ GL, loan subledger ↔ receivable GL, dan total statement ↔ receipt per tanggal/cabang; snapshot, tolerance, variance, exception, root cause, dan approval resolution tersimpan.
+  - Import file statement bank/provider, auto-matching per baris, dan scheduler EOD tetap menjadi P1 integrasi.
 - [x] Bangun complaint/support case dengan SLA response dan resolution, escalation, komunikasi, outcome, dan maker-checker.
 - [ ] Bangun configuration workbench versioned/effective-dated untuk product, pricing, appraisal, workflow, accounting, custody, regulatory, dan authority matrix.
   - Control plane, UI register/editor/diff/history, checksum, maker-checker, activation terjadwal, supersede, dan rollback melalui versi baru sudah tersedia.

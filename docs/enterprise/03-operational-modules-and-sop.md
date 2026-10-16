@@ -146,6 +146,8 @@ Setiap perpindahan mencatat asal, tujuan, petugas menyerahkan/menerima, waktu, a
 - Receipt bernomor unik dan dapat diverifikasi.
 - Reversal adalah transaksi lawan, tidak menghapus transaksi awal.
 - Refund, waiver, adjustment, dan backdate memakai approval serta accounting period guard.
+- Payment ledger menyediakan partial/full payment dengan idempotency, nomor receipt unik, kanal, referensi eksternal, alokasi biaya lalu pokok, journal seimbang, loan ledger, serta penutupan otomatis saat saldo nol. Pembayaran tunai hanya dapat diposting oleh pemilik sesi teller aktif.
+- Refund, payment reversal, waiver, credit adjustment, dan debit adjustment dibuat sebagai request terpisah. Snapshot masuk Approval Control Center, maker dilarang menjadi checker, dan approval memposting contra journal, loan ledger, cash transaction, serta membuka/menutup kembali account dan collection exposure secara konsisten.
 
 ## 7. Collection
 
@@ -168,6 +170,7 @@ Setiap perpindahan mencatat asal, tujuan, petugas menyerahkan/menerima, waktu, a
 - Manual journal terbatas, wajib reason, attachment, dan maker-checker.
 - Reversal memakai contra entry.
 - Rekonsiliasi bank, cashbox, payment channel, loan subledger, dan custody exposure.
+- Reconciliation workbench menyimpan snapshot per tanggal dan cabang untuk cash transaction terhadap akun kas GL, loan outstanding terhadap akun piutang GL, dan receipt non-tunai terhadap total statement. Tolerance menentukan matched/exception; resolution exception memakai maker-checker dan tidak menghapus variance asal.
 - Unreconciled item menjadi exception case dengan owner dan aging.
 
 ## 9. Exception, approval, complaint, dan support
@@ -233,8 +236,9 @@ Konfigurasi efektif belum boleh dianggap otomatis mengubah seluruh mesin operasi
 - [ ] COL-101: passport, QR, chain of custody, movement, release.
 - [ ] INV-101: stock opname blind count, discrepancy, resolution.
 - [ ] FIN-101: teller/cash session, receipt, variance, close.
-- [ ] FIN-102: payment allocation, reversal, refund, adjustment.
+- [x] FIN-102: payment allocation, reversal, refund, adjustment.
 - [ ] ACC-101: COA, posting rule, period lock, reconciliation.
+  - COA, journal seimbang, period lock, reversal, dan reconciliation snapshot tersedia; posting-rule configurator, bank file adapter, serta controlled period reopen masih dilanjutkan.
 - [ ] CLC-101: collection queue, contact policy, promise-to-pay.
 - [ ] CMP-101: exception, approval, complaint, support SLA.
 - [ ] CFG-101: configuration workbench terversi dan effective-dated.

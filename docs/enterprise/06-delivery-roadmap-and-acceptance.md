@@ -69,9 +69,13 @@ Exit: lokasi dan status setiap agunan dapat direkonstruksi; selisih tidak dapat 
   - Open/close, eksklusivitas satu sesi aktif per cashbox, cash count expected-versus-actual, alasan selisih, riwayat 50 sesi, serta approval independen branch manager sudah tersedia.
   - Denomination breakdown, tolerance matrix, bukti berita acara, cash transfer antar-teller, dan end-of-day branch reconciliation masih dilanjutkan.
 - [ ] F5-02: payment allocation, receipt, reversal, refund.
+  - Partial/full payment, receipt unik, fee-first allocation, cash teller guard, idempotency, refund/reversal/waiver/debit-credit adjustment, approval independen, dan contra posting tersedia.
+  - Payment gateway callback, receipt PDF/signature, dan configurable allocation waterfall masih dilanjutkan.
 - [ ] F5-03: COA, posting rules, journal, period lock.
   - COA dasar, jurnal berimbang, register dan drill-down jurnal, reversal via approval, serta accounting period lock tersedia; posting rule configurator dan reopen terkontrol masih dilanjutkan.
 - [ ] F5-04: bank/subledger/cash reconciliation dan exception.
+  - Snapshot cash transaction ↔ GL, loan subledger ↔ receivable GL, serta bank statement total ↔ receipt tersedia per tanggal/cabang dengan tolerance, variance, exception, dan maker-checker resolution.
+  - Statement file adapter dan auto-matching per baris masih menjadi integrasi berikutnya.
 - [ ] F5-05: collection queue, activity, promise-to-pay, strategy.
   - Queue, detail kasus, DPD/aging, strategi, stage, SLA next action, structured contact note, promise-to-pay, serta broken-promise escalation sudah tersedia.
   - Contact policy effective-dated, evidence attachment, assignment balancing, legal case handoff, dan dialer/messaging integration masih dilanjutkan.

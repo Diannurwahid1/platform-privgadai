@@ -30,7 +30,6 @@ import {
   transitionApplication,
   transitionPickup,
   uploadEvidence,
-  verifySettlement,
   type ApplicationDetail,
   type CollateralTimeline,
   type MasterItem,
@@ -176,7 +175,7 @@ export default function ApplicationDetailPage() {
             {pickupStatus === "in_transit" && <Action disabled={busy} onClick={() => act("Barang diterima mitra.", () => transitionPickup(pickupId, "received"))} icon={PackageCheck}>Konfirmasi diterima</Action>}
             {collateralStatus === "received" && selectedLocation && <Action disabled={busy} onClick={() => act("Barang masuk custody.", () => createCustodyEvent({ application_id: id, location_id: selectedLocation.id, event_type: "stored", condition_note: "Segel dan kondisi diverifikasi saat serah terima." }))} icon={ShieldCheck}>Simpan di {selectedLocation.code}</Action>}
             {loanStatus === "awaiting_disbursement" && <Action disabled={busy} onClick={() => act("Pencairan terverifikasi.", () => disburseLoan(id, `DISB-${Date.now()}`))} icon={CircleDollarSign}>Verifikasi pencairan</Action>}
-            {loanStatus === "active" && <Action disabled={busy} onClick={() => { const reference = `PAY-${Date.now()}`; void act("Pelunasan terverifikasi; pelepasan agunan dikirim ke checker.", () => verifySettlement({ application_id: id, settlement_type: "repayment", external_reference: reference, amount: Number(detail.loan?.total_due_amount), idempotency_key: `repayment-${id}-${reference}` })); }} icon={CheckCircle2}>Verifikasi pelunasan</Action>}
+            {loanStatus === "active" && <Link href={`/orgs/${slug}/finance/payments`} className="inline-flex h-10 items-center gap-2 rounded-xl border border-primary px-4 text-xs font-bold text-primary"><CircleDollarSign className="h-4 w-4" />Buka payment control</Link>}
             {loanStatus === "settled" && collateralStatus === "stored" && <Link href={`/orgs/${slug}/compliance/approvals`} className="inline-flex h-10 items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 text-xs font-bold text-amber-800"><ShieldCheck className="h-4 w-4" />Menunggu otorisasi pelepasan</Link>}
             {collateralStatus === "release_authorized" && selectedLocation && <Action disabled={busy} onClick={() => act("Agunan dikembalikan ke nasabah.", () => createCustodyEvent({ application_id: id, location_id: selectedLocation.id, event_type: "returned", condition_note: "Diterima nasabah setelah verifikasi identitas." }))} icon={PackageCheck}>Serahkan ke nasabah</Action>}
           </div>

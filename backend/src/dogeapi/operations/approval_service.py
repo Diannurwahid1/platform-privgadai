@@ -26,6 +26,8 @@ from dogeapi.models import (
     IncidentEvent,
     InventoryCheck,
     Membership,
+    PaymentAdjustment,
+    ReconciliationRun,
     RegulatoryReportRun,
     RegulatoryReportTemplate,
     StaffAssignment,
@@ -343,6 +345,31 @@ async def decide_approval(
                     reason=reason,
                 )
             )
+    elif item.aggregate_type == "payment_adjustment" and item.action == "post_payment_adjustment":
+        adjustment = await session.scalar(
+            select(PaymentAdjustment)
+            .where(PaymentAdjustment.org_id == org_id, PaymentAdjustment.id == item.aggregate_id)
+            .with_for_update()
+        )
+        if adjustment is None:
+            raise HTTPException(status.HTTP_409_CONFLICT, "Payment adjustment target tidak ditemukan")
+        from dogeapi.operations import payment_service
+
+        await payment_service.decide_adjustment(session, adjustment, actor_id, decision)
+    elif item.aggregate_type == "reconciliation" and item.action == "resolve_reconciliation_exception":
+        reconciliation = await session.scalar(
+            select(ReconciliationRun)
+            .where(ReconciliationRun.org_id == org_id, ReconciliationRun.id == item.aggregate_id)
+            .with_for_update()
+        )
+        if reconciliation is None or reconciliation.status != "pending_resolution":
+            raise HTTPException(status.HTTP_409_CONFLICT, "Reconciliation exception tidak siap diputuskan")
+        if decision == "approved":
+            reconciliation.status = "resolved"
+            reconciliation.resolved_by_user_id = actor_id
+            reconciliation.resolved_at = datetime.now(UTC)
+        else:
+            reconciliation.status = "exception"
     session.add(
         ApprovalEvent(
             org_id=org_id,
