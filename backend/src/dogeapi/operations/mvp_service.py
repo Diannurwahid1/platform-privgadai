@@ -48,6 +48,7 @@ from dogeapi.models import (
     StaffAssignment,
     User,
 )
+from dogeapi.operations.configuration_runtime import get_effective_payload
 from dogeapi.operations.mvp_schemas import (
     ApplicationCreate,
     ApplicationDetail,
@@ -224,9 +225,15 @@ async def create_application(
         await ensure_operational_access(
             session, org_id, actor_id, branch.id, {"ops_admin", "branch_manager", "loan_officer"}
         )
-    if not product.min_amount <= data.requested_amount <= product.max_amount:
+    product_policy = await get_effective_payload(session, org_id, "product", [product.code.lower(), "default"])
+    if product_policy.get("enabled") is False:
+        raise _conflict("Loan product is disabled by the effective configuration")
+    min_amount = Decimal(str(product_policy.get("min_amount", product.min_amount)))
+    max_amount = Decimal(str(product_policy.get("max_amount", product.max_amount)))
+    allowed_tenors = product_policy.get("allowed_tenors_days", product.allowed_tenors_days)
+    if not min_amount <= data.requested_amount <= max_amount:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Requested amount is outside product limits")
-    if data.requested_tenor_days not in product.allowed_tenors_days:
+    if data.requested_tenor_days not in allowed_tenors:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Tenor is not allowed by this product")
 
     stamp = datetime.now(UTC).strftime("%y%m%d")
@@ -243,6 +250,8 @@ async def create_application(
 
     initial_status = "submitted" if data.submit else "draft"
     now = datetime.now(UTC)
+    workflow_policy = await get_effective_payload(session, org_id, "workflow", ["application-intake", "default"])
+    submission_sla_hours = int(workflow_policy.get("submission_sla_hours", 24))
     application = LoanApplication(
         org_id=org_id,
         branch_id=branch.id,
@@ -257,7 +266,7 @@ async def create_application(
         requested_tenor_days=data.requested_tenor_days,
         purpose=data.purpose,
         submitted_at=now if data.submit else None,
-        sla_due_at=now + timedelta(hours=24) if data.submit else None,
+        sla_due_at=now + timedelta(hours=submission_sla_hours) if data.submit else None,
     )
     session.add(application)
     await session.flush()
@@ -780,11 +789,20 @@ async def create_offer(session: AsyncSession, org_id: UUID, actor_id: UUID, data
     )
     if appraisal is None or product is None:
         raise _conflict("A final human appraisal and loan product are required")
-    max_by_ltv = appraisal.liquidation_value * product.max_ltv_percent / Decimal("100")
+    pricing_policy = await get_effective_payload(session, org_id, "pricing", [product.code.lower(), "default"])
+    max_ltv_percent = Decimal(str(pricing_policy.get("max_ltv_percent", product.max_ltv_percent)))
+    service_fee_percent = Decimal(str(pricing_policy.get("service_fee_percent", product.service_fee_percent)))
+    max_by_ltv = appraisal.liquidation_value * max_ltv_percent / Decimal("100")
     if data.principal_amount > min(appraisal.recommended_loan, max_by_ltv):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Offer exceeds appraisal or product LTV limit")
     if data.tenor_days not in product.allowed_tenors_days:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Offer tenor is not allowed by product")
+    expected_fee = (data.principal_amount * service_fee_percent / Decimal("100")).quantize(Decimal("0.01"))
+    if data.service_fee_amount != expected_fee:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Service fee does not match the effective pricing configuration",
+        )
     if data.expires_at <= datetime.now(UTC):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Offer expiry must be in the future")
     version = (

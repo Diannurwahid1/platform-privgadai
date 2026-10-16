@@ -35,6 +35,7 @@ from dogeapi.models import (
     TellerSession,
     User,
 )
+from dogeapi.operations.configuration_runtime import get_effective_payload
 
 
 async def request_approval(
@@ -53,6 +54,13 @@ async def request_approval(
     priority: str = "normal",
     sla_hours: int = 8,
 ) -> ApprovalRequest:
+    workflow_policy = await get_effective_payload(
+        session,
+        org_id,
+        "workflow",
+        [f"approval.{action}", "approval.default"],
+    )
+    sla_hours = int(workflow_policy.get("approval_sla_hours", sla_hours))
     pending = await session.scalar(
         select(ApprovalRequest).where(
             ApprovalRequest.org_id == org_id,

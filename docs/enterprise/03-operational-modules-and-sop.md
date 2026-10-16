@@ -249,4 +249,5 @@ Konfigurasi efektif belum boleh dianggap otomatis mengubah seluruh mesin operasi
 - [ ] CMP-101: exception, approval, complaint, support SLA.
 - [ ] CFG-101: configuration workbench terversi dan effective-dated.
   - Register, editor, preview diff, checksum, lifecycle event, approval, scheduled activation, supersede, dan rollback-as-new-version tersedia.
-  - Resolver runtime, schema domain, dan managed activation scheduler masih dilanjutkan.
+  - Resolver runtime dan schema domain tersedia. Intake product, pricing LTV/fee, payment allocation waterfall, submission SLA, serta approval SLA sudah membaca versi efektif.
+  - Binding appraisal/custody/regulatory/access dan managed activation scheduler masih dilanjutkan.

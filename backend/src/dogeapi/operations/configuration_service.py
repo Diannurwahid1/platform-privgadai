@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from dogeapi.models import ConfigurationEvent, ConfigurationVersion
 from dogeapi.operations import approval_service, mvp_service
+from dogeapi.operations.configuration_runtime import validate_configuration_payload
 from dogeapi.operations.configuration_schemas import ConfigurationCreate, ConfigurationUpdateDraft
 
 ADMIN_ROLES = {"ops_admin", "branch_manager", "auditor"}
@@ -64,6 +65,7 @@ async def create_configuration(
     session: AsyncSession, org_id: UUID, actor_id: UUID, data: ConfigurationCreate
 ) -> ConfigurationVersion:
     await mvp_service.ensure_any_operational_role(session, org_id, actor_id, ADMIN_ROLES)
+    validate_configuration_payload(data.domain, data.payload)
     version = (
         int(
             (
@@ -119,6 +121,7 @@ async def update_draft(
         raise HTTPException(status.HTTP_409_CONFLICT, "Hanya draft yang dapat diubah")
     if item.created_by_user_id != actor_id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Draft hanya dapat diubah oleh pembuatnya")
+    validate_configuration_payload(item.domain, data.payload)
     item.effective_from = data.effective_from
     item.payload = data.payload
     item.checksum_sha256 = _checksum(data.payload)
@@ -196,6 +199,7 @@ async def submit_configuration(
 
 
 async def activate_configuration(session: AsyncSession, item: ConfigurationVersion, actor_id: UUID | None) -> None:
+    validate_configuration_payload(item.domain, item.payload)
     now = datetime.now(UTC)
     current = await session.scalar(
         select(ConfigurationVersion)

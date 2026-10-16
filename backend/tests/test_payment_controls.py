@@ -14,6 +14,7 @@ from dogeapi.models import (
     Borrower,
     Branch,
     Cashbox,
+    ConfigurationVersion,
     JournalEntry,
     JournalLine,
     LoanAccount,
@@ -100,6 +101,43 @@ async def test_partial_payment_allocates_fee_then_principal_and_is_idempotent(db
     )
     assert sum((line.debit_amount for line in lines), Decimal("0")) == Decimal("2500")
     assert sum((line.credit_amount for line in lines), Decimal("0")) == Decimal("2500")
+
+
+async def test_effective_accounting_policy_changes_payment_waterfall(db_session: AsyncSession) -> None:
+    org, _branch, loan, _cashbox, maker, _checker = await _loan_fixture(db_session)
+    db_session.add(
+        ConfigurationVersion(
+            org_id=org.id,
+            domain="accounting",
+            config_key="payment-allocation",
+            version=1,
+            status="effective",
+            effective_from=datetime.now(UTC),
+            payload={"payment_allocation_order": ["principal", "fee"]},
+            checksum_sha256="a" * 64,
+            change_summary="Alokasikan pembayaran ke pokok sebelum biaya",
+            created_by_user_id=maker.id,
+            activated_at=datetime.now(UTC),
+        )
+    )
+    await db_session.flush()
+
+    receipt = await payment_service.record_payment(
+        db_session,
+        org.id,
+        maker.id,
+        PaymentCreate(
+            loan_account_id=loan.id,
+            amount=Decimal("2500"),
+            channel="bank_transfer",
+            external_reference="BANK-PRINCIPAL-FIRST",
+            idempotency_key="payment-principal-first",
+        ),
+    )
+    assert receipt.allocated_principal == Decimal("2500")
+    assert receipt.allocated_fee == Decimal("0")
+    assert loan.outstanding_principal == Decimal("6500")
+    assert loan.outstanding_fee == Decimal("1000")
 
 
 async def test_adjustment_requires_independent_checker_and_posts_contra(db_session: AsyncSession) -> None:

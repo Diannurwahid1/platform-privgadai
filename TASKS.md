@@ -24,7 +24,7 @@ Dokumen ini menjadi daftar kerja teknis aktif berdasarkan business blueprint dan
 | Audit | business domain event explorer dan technical request audit | immutable archival, retention/legal hold, SIEM export |
 | OJK monthly | controlled snapshot, Form 1100/2100/9100 package, validation, reconciliation, checksum, sign-off | seluruh lampiran resmi, official validator test, submission acknowledgement |
 | SLIK | encrypted D01/F01/A01 snapshot, NIK protected at rest, validation, reconciliation, ZIP export | full official field/code dictionary, correction/delete semantics, official validator |
-| Configuration | version register per tenant/domain/key, JSON snapshot, checksum, impact diff, effective date, maker-checker, scheduled activation, supersede, rollback as new version | bind every operational engine to approved effective configuration, managed scheduler, schema validation per domain |
+| Configuration | version register, checksum, impact diff, effective date, maker-checker, scheduled activation, rollback, domain schema, runtime resolver; intake/product/pricing/payment/approval SLA sudah terikat | appraisal/custody/regulatory/access binding dan managed scheduler |
 | Identity security | TOTP MFA, one-time recovery code, encrypted secret, lockout, governed session inventory/revoke, step-up TTL, security event explorer | WebAuthn/passkey, enterprise IdP/SCIM, risk-based authentication |
 | Runtime | liveness/readiness, migration head check, request ID, headers, release identity | telemetry backend, SLO/alert routing, backup restore, DR, load/security test |
 
@@ -39,7 +39,8 @@ Dokumen ini menjadi daftar kerja teknis aktif berdasarkan business blueprint dan
 - [x] Bangun complaint/support case dengan SLA response dan resolution, escalation, komunikasi, outcome, dan maker-checker.
 - [ ] Bangun configuration workbench versioned/effective-dated untuk product, pricing, appraisal, workflow, accounting, custody, regulatory, dan authority matrix.
   - Control plane, UI register/editor/diff/history, checksum, maker-checker, activation terjadwal, supersede, dan rollback melalui versi baru sudah tersedia.
-  - Runtime binding untuk seluruh product/pricing/workflow/accounting/custody/regulatory/access consumer dan schema validator per domain masih harus diselesaikan sebelum gate ditutup.
+  - Registry schema menolak field domain yang tidak dikenal, range tidak valid, JSON non-finite, dan secret plaintext. Resolver effective-dated sudah dipakai oleh product intake, plafon/tenor, pricing LTV/fee, payment allocation waterfall, submission SLA, dan approval SLA.
+  - Binding appraisal/custody/regulatory/access secara penuh serta managed scheduler masih harus diselesaikan sebelum gate ditutup.
 - [x] Tambahkan evidence attachment dan malware scan pada incident, appraisal, custody, serta KYC.
   - File diperiksa dari magic bytes, checksum SHA-256, active-content PDF, dan malware signature; file gagal dipindahkan ke zona karantina serta tidak dapat diunduh.
   - Appraisal/incident approval dan dispatch custody mewajibkan evidence bersih. KYC hanya dapat diverifikasi bila KTP depan berstatus bersih.

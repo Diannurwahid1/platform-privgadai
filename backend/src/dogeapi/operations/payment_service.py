@@ -31,6 +31,7 @@ from dogeapi.models import (
     TellerSession,
 )
 from dogeapi.operations import erp_service, mvp_service
+from dogeapi.operations.configuration_runtime import get_effective_payload
 from dogeapi.operations.payment_schemas import PaymentAdjustmentCreate, PaymentCreate, ReconciliationCreate
 
 FINANCE_ROLES = {"ops_admin", "branch_manager", "finance", "teller"}
@@ -80,8 +81,20 @@ async def record_payment(session: AsyncSession, org_id: UUID, actor_id: UUID, da
         )
         if teller is None:
             raise HTTPException(status.HTTP_409_CONFLICT, "Pembayaran tunai memerlukan sesi teller aktif milik petugas")
-    allocated_fee = min(data.amount, account.outstanding_fee)
-    allocated_principal = data.amount - allocated_fee
+    accounting_policy = await get_effective_payload(session, org_id, "accounting", ["payment-allocation", "default"])
+    allocation_order = accounting_policy.get("payment_allocation_order", ["fee", "principal"])
+    remaining = data.amount
+    allocations = {"fee": Decimal("0"), "principal": Decimal("0")}
+    outstanding_by_component = {
+        "fee": account.outstanding_fee,
+        "principal": account.outstanding_principal,
+    }
+    for component in allocation_order:
+        allocated = min(remaining, outstanding_by_component[component])
+        allocations[component] = allocated
+        remaining -= allocated
+    allocated_fee = allocations["fee"]
+    allocated_principal = allocations["principal"]
     lines = [(accounts["1100"], data.amount, Decimal("0"), f"Receipt {data.external_reference}")]
     if allocated_fee:
         lines.append((accounts["1210"], Decimal("0"), allocated_fee, "Fee allocation"))
@@ -103,30 +116,22 @@ async def record_payment(session: AsyncSession, org_id: UUID, actor_id: UUID, da
     cashbox.balance += data.amount
     balance_after = account.outstanding_fee + account.outstanding_principal
     ledger_entries: list[LoanLedgerEntry] = []
-    if allocated_fee:
+    running_balance = total_outstanding
+    for component in allocation_order:
+        allocated = allocations[component]
+        if not allocated:
+            continue
+        running_balance -= allocated
         ledger_entries.append(
             LoanLedgerEntry(
                 org_id=org_id,
                 loan_account_id=account.id,
-                entry_type="payment_fee",
+                entry_type=f"payment_{component}",
                 debit_amount=0,
-                credit_amount=allocated_fee,
-                balance_after=account.outstanding_principal + account.outstanding_fee + allocated_principal,
+                credit_amount=allocated,
+                balance_after=running_balance,
                 external_reference=data.external_reference,
-                idempotency_key=f"{data.idempotency_key}:fee",
-            )
-        )
-    if allocated_principal:
-        ledger_entries.append(
-            LoanLedgerEntry(
-                org_id=org_id,
-                loan_account_id=account.id,
-                entry_type="payment_principal",
-                debit_amount=0,
-                credit_amount=allocated_principal,
-                balance_after=balance_after,
-                external_reference=data.external_reference,
-                idempotency_key=f"{data.idempotency_key}:principal",
+                idempotency_key=f"{data.idempotency_key}:{component}",
             )
         )
     transaction = CashTransaction(
