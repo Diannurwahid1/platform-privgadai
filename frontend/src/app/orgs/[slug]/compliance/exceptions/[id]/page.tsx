@@ -3,15 +3,19 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, CheckCircle2, Clock3, FileSearch, History, ShieldAlert, UserRoundCheck } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Clock3, Download, FileSearch, History, Paperclip, ShieldAlert, UserRoundCheck } from "lucide-react";
 import { ErrorState, LoadingState } from "@/components/page-state";
 import {
   addIncidentNote,
+  downloadEvidence,
   getIncident,
+  listEvidence,
   listStaffAssignments,
   reopenIncident,
   requestIncidentResolution,
   triageIncident,
+  uploadEvidence,
+  type EvidenceItem,
   type IncidentDetail,
   type StaffAssignmentItem,
 } from "@/lib/operations";
@@ -20,6 +24,7 @@ export default function IncidentDetailPage() {
   const { slug, id } = useParams<{ slug: string; id: string }>();
   const [item, setItem] = useState<IncidentDetail | null>(null);
   const [staff, setStaff] = useState<StaffAssignmentItem[]>([]);
+  const [evidence, setEvidence] = useState<EvidenceItem[]>([]);
   const [owner, setOwner] = useState("");
   const [dueAt, setDueAt] = useState("");
   const [rootCause, setRootCause] = useState("");
@@ -30,8 +35,12 @@ export default function IncidentDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const load = useCallback(async () => {
-    const [detail, assignments] = await Promise.all([getIncident(id), listStaffAssignments()]);
-    setItem(detail); setStaff(assignments);
+    const detail = await getIncident(id);
+    const [assignments, attachments] = await Promise.all([
+      listStaffAssignments(),
+      listEvidence(detail.application.id, "incident", id),
+    ]);
+    setItem(detail); setStaff(assignments); setEvidence(attachments);
     setOwner(detail.assigned_to_user_id ?? "");
     setDueAt(detail.due_at ? new Date(detail.due_at).toISOString().slice(0, 16) : "");
     setRootCause(detail.root_cause ?? ""); setActionPlan(detail.action_plan ?? "");
@@ -50,6 +59,7 @@ export default function IncidentDetailPage() {
         <div className="space-y-4"><Panel title="Ringkasan kejadian" icon={ShieldAlert}><p className="text-sm leading-6">{item.description}</p><div className="mt-5 grid gap-3 sm:grid-cols-3"><Fact label="Nasabah" value={item.application.borrower_name} /><Fact label="Cabang" value={`${item.application.branch_code} · ${item.application.branch_name}`} /><Fact label="Agunan" value={`${item.asset.asset_code} · ${item.asset.label || "—"}`} /></div></Panel>
           {canInvestigate && <Panel title="Triage & investigation plan" icon={UserRoundCheck}><div className="grid gap-3 sm:grid-cols-2"><Field label="Owner kasus"><select value={owner} onChange={(event) => setOwner(event.target.value)} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-sm"><option value="">Pilih owner</option>{branchStaff.map((person) => <option key={person.id} value={person.user_id}>{person.user_name} · {person.operational_role}</option>)}</select></Field><Field label="Target SLA"><input type="datetime-local" value={dueAt} onChange={(event) => setDueAt(event.target.value)} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-sm" /></Field></div><Field label="Root cause"><textarea value={rootCause} onChange={(event) => setRootCause(event.target.value)} className="min-h-24 w-full rounded-xl border border-border bg-background px-3 py-3 text-sm" placeholder="Fakta penyebab dasar berdasarkan hasil investigasi" /></Field><Field label="Corrective action plan"><textarea value={actionPlan} onChange={(event) => setActionPlan(event.target.value)} className="min-h-24 w-full rounded-xl border border-border bg-background px-3 py-3 text-sm" placeholder="Tindakan, PIC, dan kontrol agar kejadian tidak berulang" /></Field><button disabled={busy || !owner || !dueAt || rootCause.length < 5 || actionPlan.length < 5} onClick={() => execute(() => triageIncident(id, { assigned_to_user_id: owner, due_at: new Date(dueAt).toISOString(), root_cause: rootCause, action_plan: actionPlan }), "Triage dan rencana investigasi diperbarui.")} className="rounded-xl bg-primary px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50">Simpan triage</button></Panel>}
           <Panel title="Catatan investigasi" icon={FileSearch}><div className="flex gap-2"><input value={note} onChange={(event) => setNote(event.target.value)} className="h-10 min-w-0 flex-1 rounded-xl border border-border bg-background px-3 text-sm" placeholder="Tambahkan fakta, temuan, atau referensi bukti…" /><button disabled={busy || note.length < 3} onClick={() => execute(async () => { await addIncidentNote(id, note); setNote(""); }, "Catatan investigasi ditambahkan.")} className="rounded-xl border border-primary px-4 py-2.5 text-xs font-bold text-primary disabled:opacity-50">Tambah catatan</button></div></Panel>
+          <Panel title="Evidence kasus" icon={Paperclip}><div className="flex flex-col gap-3"><div className="flex items-center justify-between gap-3"><p className="text-xs leading-5 text-muted-foreground">Bukti ditautkan ke kasus ini, dipindai dari isi file, dan file bermasalah masuk karantina.</p><label className="shrink-0 cursor-pointer rounded-xl bg-primary px-4 py-2.5 text-xs font-bold text-white"><input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="hidden" disabled={busy} onChange={(event) => { const file = event.target.files?.[0]; if (file) void execute(() => uploadEvidence(item.application.id, file, "incident_evidence", "incident", id), "Evidence kasus dipindai dan disimpan."); event.currentTarget.value = ""; }} />Unggah bukti</label></div><div className="divide-y divide-border rounded-xl border border-border">{evidence.map((file) => <div key={file.id} className="flex items-center justify-between gap-3 p-3"><div className="min-w-0"><p className="truncate text-xs font-bold">{file.file_name}</p><p className="mt-1 text-[10px] text-muted-foreground">{file.scanner_engine ?? "scanner"} · {file.scan_status} · SHA-256 {file.sha256.slice(0, 12)}…</p>{file.scan_detail && <p className="mt-1 text-[10px] text-muted-foreground">{file.scan_detail}</p>}</div><button type="button" disabled={file.scan_status !== "clean"} onClick={() => void execute(() => downloadEvidence(file.id), "Evidence diunduh dan akses dicatat.")} className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-border text-muted-foreground disabled:cursor-not-allowed disabled:opacity-35"><Download className="h-4 w-4" /></button></div>)}{!evidence.length && <p className="p-4 text-center text-xs text-muted-foreground">Belum ada evidence kasus.</p>}</div></div></Panel>
           {["investigating", "reopened"].includes(item.status) && <Panel title="Ajukan resolusi" icon={CheckCircle2}><p className="mb-3 text-xs text-muted-foreground">Resolusi tidak langsung menutup kasus. Branch manager harus memeriksa root cause dan action plan melalui Approval Inbox.</p><textarea value={resolution} onChange={(event) => setResolution(event.target.value)} className="min-h-24 w-full rounded-xl border border-border bg-background px-3 py-3 text-sm" placeholder="Ringkasan hasil, bukti penyelesaian, dan residual risk" /><button disabled={busy || resolution.length < 10} onClick={() => execute(() => requestIncidentResolution(id, resolution), "Resolusi dikirim ke branch manager untuk approval.")} className="mt-3 rounded-xl bg-primary px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50">Kirim untuk approval</button></Panel>}
           {item.status === "resolved" && <Panel title="Reopen case" icon={ShieldAlert}><textarea value={resolution} onChange={(event) => setResolution(event.target.value)} className="min-h-20 w-full rounded-xl border border-border bg-background px-3 py-3 text-sm" placeholder="Alasan kasus perlu dibuka kembali" /><button disabled={busy || resolution.length < 10} onClick={() => execute(() => reopenIncident(id, resolution), "Incident dibuka kembali dan agunan ditahan.")} className="mt-3 rounded-xl border border-primary px-4 py-2.5 text-xs font-bold text-primary disabled:opacity-50">Buka kembali</button></Panel>}
         </div>

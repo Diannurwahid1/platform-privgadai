@@ -103,6 +103,10 @@ class KycDocument(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         String(16), nullable=False, default="fernet-v1", server_default="fernet-v1"
     )
     scan_status: Mapped[str] = mapped_column(String(24), nullable=False, default="pending", server_default="pending")
+    scanner_engine: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    scan_detail: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    scanned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    quarantined_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class KycEvent(UUIDPrimaryKeyMixin, Base):

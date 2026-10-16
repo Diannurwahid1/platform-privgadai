@@ -9,16 +9,16 @@ Dokumen ini menjadi daftar kerja teknis aktif berdasarkan business blueprint dan
 | Enterprise shell | Sidebar collapse/expand, route unik, satu active leaf, global search | visual regression, keyboard audit, WCAG |
 | Multi-tenant | tenant scoped query, composite tenant FK pada domain kritis, role dan branch assignment | negative authorization matrix seluruh object/export/job |
 | Customer 360 | profil, relasi pengajuan/pinjaman/agunan/collection, consent, activity | duplicate/merge/correction/freeze workflow |
-| KYC/CDD | data KTP/NIK terenkripsi, masking, upload KTP terenkripsi, checksum, maker-checker, expiry, event history | provider Dukcapil/eKYC resmi, PEP/sanction provider, malware scan, monitoring berkala |
+| KYC/CDD | data KTP/NIK terenkripsi, masking, upload KTP terenkripsi, checksum, malware scan/karantina, maker-checker, expiry, event history | provider Dukcapil/eKYC resmi, PEP/sanction provider, monitoring berkala |
 | Loan origination | intake, queue, detail, state guard, offer, acceptance, agreement evidence dasar | assignment balancing, request changes, e-sign provider, policy exception |
-| Appraisal | human appraisal, revision, evidence konteks, LTV guard, approval independen | comparable register, price source versioning, specialist matrix, re-appraisal |
-| Custody | passport, pickup, receive/store/release, mutasi vault dua petugas, seal chain | QR scan, proof-of-handover signature, insurance workflow |
+| Appraisal | human appraisal, revision, evidence tertaut dan dipindai, LTV guard, approval independen dengan evidence gate | comparable register, price source versioning, specialist matrix, re-appraisal |
+| Custody | passport, pickup, receive/store/release, mutasi vault dua petugas, seal chain, evidence gate saat dispatch | QR scan, proof-of-handover signature, insurance workflow |
 | Stock opname | snapshot register, blind first count, variance, recount user berbeda, approval | evidence per variance, investigation otomatis, cycle-count scheduler |
 | Teller | exclusive cashbox, opening/closing count, selisih wajib alasan, approval supervisor, history | denomination count, tolerance matrix, cash transfer, branch EOD |
 | Payment | partial/full payment, receipt unik, alokasi fee→principal, idempotency, teller guard, refund/reversal/waiver/adjustment approval, contra journal | payment gateway callback, receipt PDF/signature, configurable allocation waterfall |
 | Accounting | COA dasar, balanced journal, drill-down, reversal approval, period close/lock, cash/loan/bank reconciliation snapshot dan exception approval | posting-rule configurator, bank statement file adapter, controlled reopen |
 | Collection | case detail, strategy/stage, SLA, notes, PTP, broken-promise escalation | contact policy versioning, evidence, legal handoff, channel integration |
-| Incident/exception | real case register, branch scope, SLA, owner, RCA/CAPA, event log, collateral hold, approval resolution, reopen | evidence case, taxonomy versioning, multi-aggregate relation, CAPA analytics |
+| Incident/exception | real case register, branch scope, SLA, owner, RCA/CAPA, event log, evidence privat, collateral hold, approval resolution, reopen | taxonomy versioning, multi-aggregate relation, CAPA analytics |
 | Complaint/support | tiket unik, Customer 360, branch scope, owner, response/resolution SLA, komunikasi, escalation, outcome, compensation decision, approval, reopen | evidence, channel adapter, refund posting, regulator acknowledgement, taxonomy versioning |
 | Approval | append-only ledger, snapshot, separation of duty, role/branch scope, delegation, SLA escalation | managed scheduler, authority matrix by amount/product/risk |
 | Audit | business domain event explorer dan technical request audit | immutable archival, retention/legal hold, SIEM export |
@@ -38,7 +38,10 @@ Dokumen ini menjadi daftar kerja teknis aktif berdasarkan business blueprint dan
 - [ ] Bangun configuration workbench versioned/effective-dated untuk product, pricing, appraisal, workflow, accounting, custody, regulatory, dan authority matrix.
   - Control plane, UI register/editor/diff/history, checksum, maker-checker, activation terjadwal, supersede, dan rollback melalui versi baru sudah tersedia.
   - Runtime binding untuk seluruh product/pricing/workflow/accounting/custody/regulatory/access consumer dan schema validator per domain masih harus diselesaikan sebelum gate ditutup.
-- [ ] Tambahkan evidence attachment dan malware scan pada incident, appraisal, custody, serta KYC.
+- [x] Tambahkan evidence attachment dan malware scan pada incident, appraisal, custody, serta KYC.
+  - File diperiksa dari magic bytes, checksum SHA-256, active-content PDF, dan malware signature; file gagal dipindahkan ke zona karantina serta tidak dapat diunduh.
+  - Appraisal/incident approval dan dispatch custody mewajibkan evidence bersih. KYC hanya dapat diverifikasi bila KTP depan berstatus bersih.
+  - Environment production menolak startup bila scanner eksternal ClamAV tidak dipilih; mode built-in hanya untuk development/test.
 - [ ] Terapkan MFA privileged, session inventory/revoke, step-up auth, dan security event explorer.
 - [ ] Jalankan migration rehearsal, backup restore, load/soak, dependency/security scan, serta UAT per role dan cabang.
 

@@ -71,10 +71,12 @@ async def test_ktp_kyc_masks_nik_encrypts_document_and_enforces_checker(
         "ktp_front",
         "ktp.jpg",
         "image/jpeg",
-        b"synthetic-image-content",
+        b"\xff\xd8\xffsynthetic-image-content\xff\xd9",
     )
     assert document.object_key.endswith(".enc")
     assert document.sha256 != "synthetic-image-content"
+    assert document.scan_status == "clean"
+    assert document.scanner_engine == "content-guard-v1"
 
     with pytest.raises(Exception) as maker_error:
         await kyc_service.review_verification(

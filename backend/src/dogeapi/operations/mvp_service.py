@@ -15,6 +15,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from dogeapi.file_security import scan_upload
 from dogeapi.models import (
     ApplicationStatusHistory,
     Asset,
@@ -30,6 +31,7 @@ from dogeapi.models import (
     CustodyMovement,
     CustomerAcceptance,
     DebtorProfile,
+    EvidenceEvent,
     EvidenceFile,
     HumanAppraisal,
     Incident,
@@ -70,6 +72,7 @@ from dogeapi.operations.state_machine import (
     LOAN_TRANSITIONS,
     can_transition,
 )
+from dogeapi.settings import get_settings
 
 
 def _not_found(label: str) -> HTTPException:
@@ -465,7 +468,15 @@ async def add_evidence(
         application.branch_id,
         {"ops_admin", "branch_manager", "loan_officer", "reviewer", "appraiser", "field_agent"},
     )
-    item = EvidenceFile(org_id=org_id, application_id=application_id, scan_status="pending", **data.model_dump())
+    item = EvidenceFile(
+        org_id=org_id,
+        application_id=application_id,
+        subject_type="application",
+        subject_id=application_id,
+        uploaded_by_user_id=actor_id,
+        scan_status="pending",
+        **data.model_dump(),
+    )
     session.add(item)
     await session.flush()
     return item
@@ -480,8 +491,13 @@ async def store_evidence_upload(
     file_name: str,
     content_type: str,
     content: bytes,
+    *,
+    subject_type: str = "application",
+    subject_id: UUID | None = None,
 ) -> EvidenceFile:
-    application = await get_application(session, org_id, application_id)
+    application, resolved_subject_id = await _resolve_evidence_subject(
+        session, org_id, application_id, subject_type, subject_id or application_id
+    )
     await ensure_operational_access(
         session,
         org_id,
@@ -489,9 +505,11 @@ async def store_evidence_upload(
         application.branch_id,
         {"ops_admin", "branch_manager", "loan_officer", "reviewer", "appraiser", "field_agent"},
     )
+    result = await scan_upload(content, content_type, get_settings())
     digest = hashlib.sha256(content).hexdigest()
     safe_suffix = Path(file_name).suffix.lower()[:10]
-    relative_key = f"{org_id}/{application_id}/{secrets.token_hex(16)}{safe_suffix}"
+    zone = "clean" if result.status == "clean" else "quarantine"
+    relative_key = f"{zone}/{org_id}/{application_id}/{secrets.token_hex(16)}{safe_suffix}"
     storage_root = Path(__file__).resolve().parents[3] / ".data" / "evidence"
     target = (storage_root / relative_key).resolve()
     if storage_root.resolve() not in target.parents:
@@ -507,11 +525,120 @@ async def store_evidence_upload(
         content_type=content_type,
         size_bytes=len(content),
         sha256=digest,
-        scan_status="pending",
+        scan_status=result.status,
+        subject_type=subject_type,
+        subject_id=resolved_subject_id,
+        uploaded_by_user_id=actor_id,
+        scanner_engine=result.engine,
+        scan_detail=result.detail,
+        scanned_at=datetime.now(UTC),
+        quarantined_at=datetime.now(UTC) if result.status != "clean" else None,
     )
     session.add(item)
     await session.flush()
+    session.add(
+        EvidenceEvent(
+            org_id=org_id,
+            evidence_file_id=item.id,
+            actor_user_id=actor_id,
+            event_type="EvidenceScanned",
+            from_status="pending",
+            to_status=result.status,
+            detail=f"{result.engine}: {result.detail}",
+        )
+    )
+    await session.flush()
     return item
+
+
+async def _resolve_evidence_subject(
+    session: AsyncSession,
+    org_id: UUID,
+    application_id: UUID,
+    subject_type: str,
+    subject_id: UUID,
+) -> tuple[LoanApplication, UUID]:
+    application = await get_application(session, org_id, application_id)
+    model_map = {
+        "appraisal": HumanAppraisal,
+        "custody_movement": CustodyMovement,
+        "incident": Incident,
+    }
+    if subject_type == "application":
+        if subject_id != application.id:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Subject application does not match path")
+        return application, subject_id
+    model = model_map.get(subject_type)
+    if model is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Unsupported evidence subject")
+    subject = await session.scalar(
+        select(model).where(model.org_id == org_id, model.id == subject_id, model.application_id == application.id)
+    )
+    if subject is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Evidence subject not found")
+    return application, subject_id
+
+
+async def list_evidence(
+    session: AsyncSession,
+    org_id: UUID,
+    actor_id: UUID,
+    application_id: UUID,
+    *,
+    subject_type: str | None = None,
+    subject_id: UUID | None = None,
+) -> list[EvidenceFile]:
+    application = await get_application(session, org_id, application_id)
+    await ensure_operational_access(
+        session,
+        org_id,
+        actor_id,
+        application.branch_id,
+        {"ops_admin", "branch_manager", "loan_officer", "reviewer", "appraiser", "field_agent", "custodian"},
+    )
+    statement = select(EvidenceFile).where(EvidenceFile.org_id == org_id, EvidenceFile.application_id == application_id)
+    if subject_type is not None:
+        statement = statement.where(EvidenceFile.subject_type == subject_type)
+    if subject_id is not None:
+        statement = statement.where(EvidenceFile.subject_id == subject_id)
+    return list((await session.scalars(statement.order_by(EvidenceFile.created_at.desc()))).all())
+
+
+async def get_evidence_download(
+    session: AsyncSession, org_id: UUID, actor_id: UUID, evidence_id: UUID
+) -> tuple[EvidenceFile, Path]:
+    item = await session.scalar(
+        select(EvidenceFile).where(EvidenceFile.org_id == org_id, EvidenceFile.id == evidence_id)
+    )
+    if item is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Evidence not found")
+    application = await get_application(session, org_id, item.application_id)
+    await ensure_operational_access(
+        session,
+        org_id,
+        actor_id,
+        application.branch_id,
+        {"ops_admin", "branch_manager", "loan_officer", "reviewer", "appraiser", "field_agent", "custodian"},
+    )
+    if item.scan_status != "clean":
+        raise HTTPException(status.HTTP_423_LOCKED, "Evidence is quarantined or has not passed malware scanning")
+    storage_root = Path(__file__).resolve().parents[3] / ".data" / "evidence"
+    target = (storage_root / item.object_key).resolve()
+    if storage_root.resolve() not in target.parents or not target.is_file():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Evidence object not found")
+    session.add(
+        EvidenceEvent(
+            org_id=org_id,
+            evidence_file_id=item.id,
+            actor_user_id=actor_id,
+            event_type="EvidenceDownloaded",
+            from_status=item.scan_status,
+            to_status=item.scan_status,
+            detail="Private evidence downloaded",
+        )
+    )
+    await session.flush()
+    return item, target
 
 
 async def create_appraisal(
@@ -894,6 +1021,16 @@ async def dispatch_custody_movement(
     await ensure_operational_access(
         session, org_id, actor_id, location.branch_id, {"ops_admin", "branch_manager", "custodian"}
     )
+    clean_evidence_id = await session.scalar(
+        select(EvidenceFile.id).where(
+            EvidenceFile.org_id == org_id,
+            EvidenceFile.subject_type == "custody_movement",
+            EvidenceFile.subject_id == item.id,
+            EvidenceFile.scan_status == "clean",
+        )
+    )
+    if clean_evidence_id is None:
+        raise _conflict("Dispatch requires handover evidence that passed malware scanning")
     item.status = "in_transit"
     item.seal_out = seal
     item.dispatch_note = note
@@ -1295,7 +1432,17 @@ async def get_application_detail(session: AsyncSession, org_id: UUID, applicatio
         purpose=application.purpose,
         submitted_at=application.submitted_at,
         evidence=[
-            {"id": item.id, "type": item.evidence_type, "file_name": item.file_name, "scan_status": item.scan_status}
+            {
+                "id": item.id,
+                "type": item.evidence_type,
+                "file_name": item.file_name,
+                "scan_status": item.scan_status,
+                "subject_type": item.subject_type,
+                "subject_id": item.subject_id,
+                "scanner_engine": item.scanner_engine,
+                "scan_detail": item.scan_detail,
+                "sha256": item.sha256,
+            }
             for item in evidence
         ],
         appraisals=[

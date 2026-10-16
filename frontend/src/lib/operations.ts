@@ -118,6 +118,23 @@ export type ApplicationDetail = {
   history: Array<Record<string, unknown>>;
 };
 
+export type EvidenceItem = {
+  id: string;
+  application_id: string;
+  subject_type: "application" | "appraisal" | "custody_movement" | "incident";
+  subject_id: string;
+  evidence_type: string;
+  file_name: string;
+  content_type: string;
+  size_bytes: number;
+  sha256: string;
+  scan_status: string;
+  scanner_engine: string | null;
+  scan_detail: string | null;
+  scanned_at: string | null;
+  created_at: string;
+};
+
 export type CollateralTimeline = {
   application_id: string;
   application_no: string;
@@ -475,12 +492,27 @@ export const getPublicIntakeConfig = (slug: string) =>
   apiFetch<PublicIntakeConfig>(`/public/v1/partners/${slug}/intake-config`);
 export const submitPublicApplication = (slug: string, json: Record<string, unknown>) =>
   apiFetch<ActionResult>(`/public/v1/partners/${slug}/applications`, { method: "POST", json });
-export const uploadEvidence = (applicationId: string, file: File, evidenceType = "asset_photo") => {
+export const uploadEvidence = (
+  applicationId: string,
+  file: File,
+  evidenceType = "asset_photo",
+  subjectType: EvidenceItem["subject_type"] = "application",
+  subjectId?: string,
+) => {
   const form = new FormData();
   form.append("evidence_type", evidenceType);
+  form.append("subject_type", subjectType);
+  if (subjectId) form.append("subject_id", subjectId);
   form.append("file", file);
   return apiUpload<ActionResult>(`/v1/applications/${applicationId}/evidence/upload`, form);
 };
+export const listEvidence = (applicationId: string, subjectType?: EvidenceItem["subject_type"], subjectId?: string) => {
+  const query = new URLSearchParams();
+  if (subjectType) query.set("subject_type", subjectType);
+  if (subjectId) query.set("subject_id", subjectId);
+  return apiFetch<EvidenceItem[]>(`/v1/applications/${applicationId}/evidence${query.size ? `?${query}` : ""}`);
+};
+export const downloadEvidence = (evidenceId: string) => apiDownload(`/v1/evidence/${evidenceId}/download`);
 export const getFinanceOverview = () => apiFetch<FinanceOverview>("/v1/finance/overview");
 export const listCashboxes = () => apiFetch<Array<Record<string, unknown>>>("/v1/finance/cashboxes");
 export const listTellerSessions = () =>

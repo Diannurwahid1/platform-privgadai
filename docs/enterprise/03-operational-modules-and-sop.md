@@ -82,6 +82,8 @@ Penaksiran memiliki route dan queue sendiri. Penaksir hanya melihat cabang/kateg
 
 Revisi tidak menimpa hasil lama. Setiap versi appraisal memiliki status, author, approver, timestamp, alasan, dan evidence hash.
 
+Evidence appraisal disimpan privat per tenant, ditautkan ke revision ID, diberi checksum, dan dipindai sebelum checker dapat menyetujui appraisal. File karantina tidak dapat diunduh atau dipakai sebagai dasar keputusan.
+
 ## 4. Penawaran dan perjanjian
 
 - Offer memiliki masa berlaku, snapshot rate/fee, jadwal, syarat, dan approval.
@@ -114,6 +116,8 @@ PICKUP_ASSIGNED → PICKED_UP → IN_TRANSIT → RECEIVED
 ```
 
 Setiap perpindahan mencatat asal, tujuan, petugas menyerahkan/menerima, waktu, alasan, evidence, dan approval sesuai risiko. Movement tidak boleh mengubah histori.
+
+Dispatch mutasi vault ditahan sampai bukti serah terima yang ditautkan ke movement lulus pemindaian. Hasil scan dan setiap unduhan menjadi business event dengan actor dan waktu.
 
 ### Stock opname
 
@@ -178,6 +182,8 @@ Setiap perpindahan mencatat asal, tujuan, petugas menyerahkan/menerima, waktu, a
 ### Exception case
 
 Field minimum: type, severity, tenant, branch, aggregate, source event, owner, SLA, root cause, action plan, evidence, approval, resolution, dan reopened count.
+
+Resolusi incident tidak dapat disetujui tanpa sedikitnya satu evidence kasus yang lulus pemindaian. Evidence memakai subject ID kasus sehingga bukti pengajuan umum tidak dapat memenuhi gate secara tidak sengaja.
 
 Implementasi saat ini menyediakan Incident & Exception Register tenant-scoped dan branch-scoped, detail kasus, severity, SLA, owner, root cause, corrective action, catatan investigasi append-only, status agunan `incident_hold`, approval resolusi oleh branch manager, serta reopen counter. Persetujuan resolusi memulihkan status agunan sebelum incident; penolakan mengembalikan kasus ke investigasi.
 

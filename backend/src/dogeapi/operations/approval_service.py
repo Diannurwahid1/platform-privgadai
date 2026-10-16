@@ -21,6 +21,7 @@ from dogeapi.models import (
     ConfigurationEvent,
     ConfigurationVersion,
     CustodyEvent,
+    EvidenceFile,
     HumanAppraisal,
     Incident,
     IncidentEvent,
@@ -126,6 +127,20 @@ async def decide_approval(
     if item.requested_by_user_id == actor_id:
         raise HTTPException(status.HTTP_409_CONFLICT, "Maker tidak boleh menjadi checker untuk approval yang sama")
     delegation_id = await _ensure_checker_role(session, item, actor_id)
+    if decision == "approved" and item.aggregate_type in {"appraisal", "incident"}:
+        clean_evidence_id = await session.scalar(
+            select(EvidenceFile.id).where(
+                EvidenceFile.org_id == org_id,
+                EvidenceFile.subject_type == item.aggregate_type,
+                EvidenceFile.subject_id == item.aggregate_id,
+                EvidenceFile.scan_status == "clean",
+            )
+        )
+        if clean_evidence_id is None:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "Approval memerlukan sedikitnya satu evidence yang lulus malware scanning",
+            )
     previous = item.status
     item.status = decision
     item.decided_by_user_id = actor_id

@@ -32,7 +32,7 @@ Exit: shell lulus visual regression, keyboard, responsive, dan active-route test
 ## Fase 2 — Customer 360 dan governance identitas (P0)
 
 - [x] F2-01: customer list tenant-scoped dan detail route.
-- [ ] F2-02: KYC, consent, document evidence, history.
+- [x] F2-02: KYC, consent, dokumen KTP terenkripsi, malware scan/karantina, dan history.
   - Fondasi KTP/KYC, bukti terenkripsi, maker-checker, dan event history tersedia; provider resmi, screening, malware scan, dan ongoing monitoring masih terbuka.
 - [ ] F2-03: customer-loan-collateral-payment relationships.
 - [ ] F2-04: duplicate, merge, correction, freeze, watchlist workflow.
@@ -44,7 +44,7 @@ Exit: operator dapat membuka detail dan menjalankan tindakan aman; auditor dapat
 
 - [ ] F3-01: application queue/detail/checklist/assignment/SLA.
 - [ ] F3-02: state machine dan server-side transition guards.
-- [ ] F3-03: appraisal workbench, evidence, version, supervisor review.
+- [x] F3-03: appraisal workbench, evidence tertaut/pindai, version, dan supervisor review.
 - [ ] F3-04: offer, simulation, acceptance, agreement, signature evidence.
 - [ ] F3-05: approval matrix dan domain events.
 
@@ -102,6 +102,8 @@ Exit: transaksi uang mempunyai source event, balanced journal, receipt, dan reko
 - [ ] F6-06: privileged access, MFA, session, security event.
 
 Exit: semua command P0 memiliki event, kontrol approval, dan konfigurasi terversi.
+
+Evidence control yang tersedia: subject linkage untuk application/appraisal/custody movement/incident, private storage, SHA-256, MIME signature check, active PDF rejection, EICAR test signature, adapter ClamAV, quarantine, download guard, dan event audit. Production wajib memakai mode ClamAV.
 
 ## Fase 7 — OJK, SLIK, dan management reporting (P1)
 

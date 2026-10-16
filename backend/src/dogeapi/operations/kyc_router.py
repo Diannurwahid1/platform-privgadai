@@ -112,7 +112,13 @@ async def upload_kyc_document(
         content,
     )
     await session.commit()
-    return ERPActionResult(id=item.id, status=item.scan_status, message="Dokumen KYC disimpan terenkripsi")
+    return ERPActionResult(
+        id=item.id,
+        status=item.scan_status,
+        message="Dokumen KYC terenkripsi dan lulus pemindaian"
+        if item.scan_status == "clean"
+        else "Dokumen KYC terenkripsi tetapi dikarantina",
+    )
 
 
 @router.post("/{customer_id}/kyc/{verification_id}/review", dependencies=[Depends(require_scope("org:write"))])

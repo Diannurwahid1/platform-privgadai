@@ -12,6 +12,7 @@ from dogeapi.models import (
     Asset,
     Borrower,
     Branch,
+    EvidenceFile,
     IncidentEvent,
     LoanApplication,
     Membership,
@@ -121,6 +122,26 @@ async def test_incident_investigation_resolution_and_reopen(db_session: AsyncSes
     )
     assert incident.status == "pending_resolution"
     assert approval is not None
+    db_session.add(
+        EvidenceFile(
+            org_id=org.id,
+            application_id=application.id,
+            subject_type="incident",
+            subject_id=incident.id,
+            uploaded_by_user_id=maker.id,
+            evidence_type="incident_evidence",
+            file_name="incident.png",
+            object_key=f"clean/{org.id}/{application.id}/incident.png",
+            content_type="image/png",
+            size_bytes=24,
+            sha256="a" * 64,
+            scan_status="clean",
+            scanner_engine="content-guard-v1",
+            scan_detail="Signature checks passed",
+            scanned_at=datetime.now(UTC),
+        )
+    )
+    await db_session.flush()
 
     await approval_service.decide_approval(
         db_session,

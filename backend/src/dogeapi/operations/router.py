@@ -6,6 +6,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi.responses import FileResponse
 
 from dogeapi.deps import OrgIdDep, SessionDep, UserDep
 from dogeapi.operations import mvp_service, service
@@ -218,6 +219,8 @@ async def upload_evidence(
     user: UserDep,
     evidence_type: Annotated[str, Form(min_length=2, max_length=40)],
     file: Annotated[UploadFile, File()],
+    subject_type: Annotated[str, Form(pattern="^(application|appraisal|custody_movement|incident)$")] = "application",
+    subject_id: Annotated[UUID | None, Form()] = None,
 ) -> ActionResult:
     allowed = {"image/jpeg", "image/png", "image/webp", "application/pdf"}
     if file.content_type not in allowed:
@@ -236,14 +239,58 @@ async def upload_evidence(
         file.filename or "evidence",
         file.content_type or "application/octet-stream",
         content,
+        subject_type=subject_type,
+        subject_id=subject_id,
     )
     await session.commit()
     return ActionResult(
         id=item.id,
         application_id=application_id,
         status=item.scan_status,
-        message="Evidence uploaded to private storage and queued for scanning",
+        message="Evidence scanned and stored in private clean storage"
+        if item.scan_status == "clean"
+        else "Evidence quarantined",
     )
+
+
+@router.get("/applications/{application_id}/evidence")
+async def list_application_evidence(
+    application_id: UUID,
+    session: SessionDep,
+    org_id: OrgIdDep,
+    user: UserDep,
+    subject_type: Annotated[str | None, Query(pattern="^(application|appraisal|custody_movement|incident)$")] = None,
+    subject_id: UUID | None = None,
+) -> list[dict[str, object]]:
+    items = await mvp_service.list_evidence(
+        session, org_id, user.id, application_id, subject_type=subject_type, subject_id=subject_id
+    )
+    return [
+        {
+            "id": item.id,
+            "application_id": item.application_id,
+            "subject_type": item.subject_type,
+            "subject_id": item.subject_id,
+            "evidence_type": item.evidence_type,
+            "file_name": item.file_name,
+            "content_type": item.content_type,
+            "size_bytes": item.size_bytes,
+            "sha256": item.sha256,
+            "scan_status": item.scan_status,
+            "scanner_engine": item.scanner_engine,
+            "scan_detail": item.scan_detail,
+            "scanned_at": item.scanned_at,
+            "created_at": item.created_at,
+        }
+        for item in items
+    ]
+
+
+@router.get("/evidence/{evidence_id}/download")
+async def download_evidence(evidence_id: UUID, session: SessionDep, org_id: OrgIdDep, user: UserDep) -> FileResponse:
+    item, path = await mvp_service.get_evidence_download(session, org_id, user.id, evidence_id)
+    await session.commit()
+    return FileResponse(path, media_type=item.content_type, filename=item.file_name)
 
 
 @router.post(

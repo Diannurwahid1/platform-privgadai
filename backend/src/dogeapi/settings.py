@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     JWT_COOKIE_SECURE: bool = False
     JWT_COOKIE_SAMESITE: Literal["lax", "strict", "none"] = "lax"
     PII_ENCRYPTION_KEY: str = ""
+    MALWARE_SCANNER_MODE: Literal["builtin", "clamav"] = "builtin"
+    CLAMAV_EXECUTABLE: str = "clamscan"
+    MALWARE_SCAN_TIMEOUT_SECONDS: int = 30
 
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3001"
 
@@ -146,6 +149,8 @@ class Settings(BaseSettings):
                 raise ValueError("PII_ENCRYPTION_KEY is required in production")
             if self.BUILD_SHA == "local":
                 raise ValueError("BUILD_SHA must identify the deployed release in production")
+            if self.MALWARE_SCANNER_MODE != "clamav":
+                raise ValueError("MALWARE_SCANNER_MODE=clamav is required in production")
         should_validate_integrations = self.APP_ENV != "test"
 
         if should_validate_integrations and self.FEATURE_EMAIL_DELIVERY:

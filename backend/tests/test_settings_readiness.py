@@ -23,6 +23,7 @@ def test_production_accepts_hardened_core_settings() -> None:
         JWT_COOKIE_SECURE=True,
         PII_ENCRYPTION_KEY="production-fernet-key",
         BUILD_SHA="release-2026.10.16",
+        MALWARE_SCANNER_MODE="clamav",
     )
 
     assert settings.is_production is True

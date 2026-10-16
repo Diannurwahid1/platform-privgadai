@@ -122,6 +122,7 @@ class EvidenceFile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             name="fk_evidence_org_application",
             ondelete="CASCADE",
         ),
+        UniqueConstraint("org_id", "id", name="uq_evidence_files_org_id"),
     )
 
     org_id: Mapped[uuid.UUID] = mapped_column(
@@ -135,6 +136,42 @@ class EvidenceFile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     size_bytes: Mapped[int] = mapped_column(Integer(), nullable=False)
     sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     scan_status: Mapped[str] = mapped_column(String(24), nullable=False, default="pending", server_default="pending")
+    subject_type: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="application", server_default="application"
+    )
+    subject_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False, index=True)
+    uploaded_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    scanner_engine: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    scan_detail: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    scanned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    quarantined_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class EvidenceEvent(UUIDPrimaryKeyMixin, Base):
+    __tablename__ = "evidence_events"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["org_id", "evidence_file_id"],
+            ["evidence_files.org_id", "evidence_files.id"],
+            name="fk_evidence_event_org_file",
+            ondelete="CASCADE",
+        ),
+    )
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    evidence_file_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False, index=True)
+    actor_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    event_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    from_status: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    to_status: Mapped[str] = mapped_column(String(24), nullable=False)
+    detail: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
 class HumanAppraisal(UUIDPrimaryKeyMixin, TimestampMixin, Base):

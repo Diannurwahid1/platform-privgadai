@@ -16,6 +16,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from dogeapi.file_security import scan_upload
 from dogeapi.models import Borrower, DebtorProfile, KycDocument, KycEvent, KycVerification
 from dogeapi.operations.kyc_schemas import KycCreate, KycReview
 from dogeapi.settings import Settings
@@ -144,8 +145,10 @@ async def store_document(
     if verification.status in {"verified", "rejected"}:
         raise HTTPException(status.HTTP_409_CONFLICT, "Verifikasi yang sudah diputuskan tidak dapat diubah")
 
+    scan_result = await scan_upload(content, content_type, settings)
     digest = hashlib.sha256(content).hexdigest()
-    relative_key = f"{org_id}/{borrower_id}/{verification_id}/{secrets.token_hex(16)}.enc"
+    zone = "clean" if scan_result.status == "clean" else "quarantine"
+    relative_key = f"{zone}/{org_id}/{borrower_id}/{verification_id}/{secrets.token_hex(16)}.enc"
     storage_root = Path(__file__).resolve().parents[3] / ".data" / "kyc"
     target = (storage_root / relative_key).resolve()
     if storage_root.resolve() not in target.parents:
@@ -162,11 +165,15 @@ async def store_document(
         content_type=content_type,
         size_bytes=len(content),
         sha256=digest,
-        scan_status="pending",
+        scan_status=scan_result.status,
+        scanner_engine=scan_result.engine,
+        scan_detail=scan_result.detail,
+        scanned_at=datetime.now(UTC),
+        quarantined_at=datetime.now(UTC) if scan_result.status != "clean" else None,
     )
     session.add(item)
     previous = verification.status
-    verification.status = "pending_review"
+    verification.status = "pending_review" if scan_result.status == "clean" else "needs_information"
     session.add(
         KycEvent(
             org_id=org_id,
@@ -175,7 +182,7 @@ async def store_document(
             event_type="KycDocumentUploaded",
             from_status=previous,
             to_status=verification.status,
-            reason=f"{document_side} diunggah dan dienkripsi",
+            reason=f"{document_side} dienkripsi; {scan_result.engine}: {scan_result.detail}",
         )
     )
     await session.flush()
@@ -210,6 +217,8 @@ async def review_verification(
         )
         if document is None:
             raise HTTPException(status.HTTP_409_CONFLICT, "Foto sisi depan KTP wajib tersedia")
+        if document.scan_status != "clean":
+            raise HTTPException(status.HTTP_409_CONFLICT, "Foto KTP belum lulus malware scanning")
         if data.sanctions_match:
             raise HTTPException(status.HTTP_409_CONFLICT, "Sanctions match memerlukan eskalasi EDD sebelum verifikasi")
 
@@ -303,6 +312,9 @@ async def serialize_customer_kyc(session: AsyncSession, org_id: UUID, borrower_i
                         "size_bytes": doc.size_bytes,
                         "sha256": doc.sha256,
                         "scan_status": doc.scan_status,
+                        "scanner_engine": doc.scanner_engine,
+                        "scan_detail": doc.scan_detail,
+                        "scanned_at": doc.scanned_at,
                         "created_at": doc.created_at,
                     }
                     for doc in documents

@@ -177,6 +177,36 @@ async def test_complete_mvp_workflow_is_tenant_scoped(
     assert created.status_code == 201, created.text
     application_id = created.json()["application_id"]
 
+    clean_evidence = await client.post(
+        f"/v1/applications/{application_id}/evidence/upload",
+        data={"evidence_type": "asset_photo"},
+        files={"file": ("asset.png", b"\x89PNG\r\n\x1a\nasset-photo", "image/png")},
+        headers=headers,
+    )
+    assert clean_evidence.status_code == 201, clean_evidence.text
+    assert clean_evidence.json()["status"] == "clean"
+    evidence_id = clean_evidence.json()["id"]
+    downloaded = await client.get(f"/v1/evidence/{evidence_id}/download", headers=headers)
+    assert downloaded.status_code == 200
+    assert downloaded.content.startswith(b"\x89PNG")
+
+    quarantined = await client.post(
+        f"/v1/applications/{application_id}/evidence/upload",
+        data={"evidence_type": "suspicious_file"},
+        files={
+            "file": (
+                "suspicious.png",
+                b"\x89PNG\r\n\x1a\nX5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*",
+                "image/png",
+            )
+        },
+        headers=headers,
+    )
+    assert quarantined.status_code == 201, quarantined.text
+    assert quarantined.json()["status"] == "quarantined"
+    blocked = await client.get(f"/v1/evidence/{quarantined.json()['id']}/download", headers=headers)
+    assert blocked.status_code == 423
+
     application = await db_session.scalar(select(LoanApplication).where(LoanApplication.id == application_id))
     actor = await db_session.scalar(select(User).where(User.email == "mvp-owner@example.com"))
     assert application is not None and actor is not None
@@ -235,6 +265,18 @@ async def test_complete_mvp_workflow_is_tenant_scoped(
         headers=headers,
     )
     assert appraisal.status_code == 201, appraisal.text
+    appraisal_evidence = await client.post(
+        f"/v1/applications/{application_id}/evidence/upload",
+        data={
+            "evidence_type": "appraisal_evidence",
+            "subject_type": "appraisal",
+            "subject_id": appraisal.json()["id"],
+        },
+        files={"file": ("appraisal.png", b"\x89PNG\r\n\x1a\nappraisal-photo", "image/png")},
+        headers=headers,
+    )
+    assert appraisal_evidence.status_code == 201, appraisal_evidence.text
+    assert appraisal_evidence.json()["status"] == "clean"
     approval = await db_session.scalar(
         select(ApprovalRequest).where(ApprovalRequest.aggregate_id == appraisal.json()["id"])
     )
@@ -429,6 +471,18 @@ async def test_complete_mvp_workflow_is_tenant_scoped(
         headers=headers,
     )
     assert movement.status_code == 201, movement.text
+    movement_evidence = await client.post(
+        f"/v1/applications/{application_id}/evidence/upload",
+        data={
+            "evidence_type": "custody_handover",
+            "subject_type": "custody_movement",
+            "subject_id": movement.json()["id"],
+        },
+        files={"file": ("handover.png", b"\x89PNG\r\n\x1a\ncustody-handover", "image/png")},
+        headers=headers,
+    )
+    assert movement_evidence.status_code == 201, movement_evidence.text
+    assert movement_evidence.json()["status"] == "clean"
     dispatched = await client.post(
         f"/v1/custody/movements/{movement.json()['id']}/dispatch",
         json={"seal_out": "SEAL-001", "note": "Segel dipasang di bawah CCTV"},
