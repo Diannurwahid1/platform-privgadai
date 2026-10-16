@@ -25,6 +25,7 @@ async def list_application_queue(
     org_id: UUID,
     *,
     limit: int = 20,
+    branch_ids: set[UUID] | None = None,
 ) -> list[ApplicationQueueItem]:
     statement = (
         select(LoanApplication, Borrower, Branch, Asset)
@@ -40,6 +41,8 @@ async def list_application_queue(
         .order_by(LoanApplication.submitted_at.desc().nullslast(), LoanApplication.created_at.desc())
         .limit(limit)
     )
+    if branch_ids is not None:
+        statement = statement.where(LoanApplication.branch_id.in_(branch_ids))
     rows = (await session.execute(statement)).all()
     return [
         ApplicationQueueItem(
@@ -62,45 +65,53 @@ async def list_application_queue(
     ]
 
 
-async def get_operations_dashboard(session: AsyncSession, org_id: UUID) -> OperationsDashboardResponse:
-    branches = (await session.scalars(select(Branch).where(Branch.org_id == org_id).order_by(Branch.code))).all()
+async def get_operations_dashboard(
+    session: AsyncSession, org_id: UUID, *, branch_ids: set[UUID] | None = None
+) -> OperationsDashboardResponse:
+    branch_query = select(Branch).where(Branch.org_id == org_id)
+    if branch_ids is not None:
+        branch_query = branch_query.where(Branch.id.in_(branch_ids))
+    branches = (await session.scalars(branch_query.order_by(Branch.code))).all()
 
-    status_rows = (
-        await session.execute(
-            select(LoanApplication.status, func.count(LoanApplication.id))
-            .where(LoanApplication.org_id == org_id)
-            .group_by(LoanApplication.status)
-        )
-    ).all()
+    status_query = select(LoanApplication.status, func.count(LoanApplication.id)).where(
+        LoanApplication.org_id == org_id
+    )
+    if branch_ids is not None:
+        status_query = status_query.where(LoanApplication.branch_id.in_(branch_ids))
+    status_rows = (await session.execute(status_query.group_by(LoanApplication.status))).all()
     status_counts = {status: int(count) for status, count in status_rows}
 
-    requested_amount = await session.scalar(
-        select(func.coalesce(func.sum(LoanApplication.requested_amount), Decimal("0"))).where(
-            LoanApplication.org_id == org_id,
-            LoanApplication.status != "draft",
-        )
+    amount_query = select(func.coalesce(func.sum(LoanApplication.requested_amount), Decimal("0"))).where(
+        LoanApplication.org_id == org_id,
+        LoanApplication.status != "draft",
     )
+    if branch_ids is not None:
+        amount_query = amount_query.where(LoanApplication.branch_id.in_(branch_ids))
+    requested_amount = await session.scalar(amount_query)
 
+    collateral_query = (
+        select(Asset.collateral_status, func.count(Asset.id))
+        .join(LoanApplication, LoanApplication.id == Asset.application_id)
+        .where(Asset.org_id == org_id, LoanApplication.org_id == org_id)
+    )
+    if branch_ids is not None:
+        collateral_query = collateral_query.where(LoanApplication.branch_id.in_(branch_ids))
     collateral_rows = (
-        await session.execute(
-            select(Asset.collateral_status, func.count(Asset.id))
-            .where(Asset.org_id == org_id)
-            .group_by(Asset.collateral_status)
-            .order_by(Asset.collateral_status)
-        )
+        await session.execute(collateral_query.group_by(Asset.collateral_status).order_by(Asset.collateral_status))
     ).all()
 
-    activity_rows = (
-        await session.execute(
-            select(ApplicationStatusHistory, LoanApplication.application_no)
-            .join(LoanApplication, LoanApplication.id == ApplicationStatusHistory.application_id)
-            .where(
-                ApplicationStatusHistory.org_id == org_id,
-                LoanApplication.org_id == org_id,
-            )
-            .order_by(ApplicationStatusHistory.created_at.desc())
-            .limit(8)
+    activity_query = (
+        select(ApplicationStatusHistory, LoanApplication.application_no)
+        .join(LoanApplication, LoanApplication.id == ApplicationStatusHistory.application_id)
+        .where(
+            ApplicationStatusHistory.org_id == org_id,
+            LoanApplication.org_id == org_id,
         )
+    )
+    if branch_ids is not None:
+        activity_query = activity_query.where(LoanApplication.branch_id.in_(branch_ids))
+    activity_rows = (
+        await session.execute(activity_query.order_by(ApplicationStatusHistory.created_at.desc()).limit(8))
     ).all()
 
     return OperationsDashboardResponse(
@@ -115,7 +126,7 @@ async def get_operations_dashboard(session: AsyncSession, org_id: UUID) -> Opera
             exceptions=sum(status_counts.get(status, 0) for status in ("rejected", "cancelled", "incident_hold")),
             requested_amount=float(requested_amount or 0),
         ),
-        work_queue=await list_application_queue(session, org_id, limit=8),
+        work_queue=await list_application_queue(session, org_id, limit=8, branch_ids=branch_ids),
         collateral=[CollateralStatusItem(status=status, count=int(count)) for status, count in collateral_rows],
         recent_activity=[
             ActivityItem(

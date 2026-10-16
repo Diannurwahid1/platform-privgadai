@@ -59,19 +59,29 @@ router = APIRouter(prefix="/v1", tags=["privgadai-erp"], dependencies=[Depends(r
 
 
 @router.get("/customers")
-async def customers(session: SessionDep, org_id: OrgIdDep) -> list[dict[str, object]]:
-    rows = (
-        await session.execute(
-            select(Borrower, DebtorProfile)
-            .join(
-                DebtorProfile,
-                (DebtorProfile.borrower_id == Borrower.id) & (DebtorProfile.org_id == org_id),
-                isouter=True,
-            )
-            .where(Borrower.org_id == org_id)
-            .order_by(Borrower.created_at.desc())
+async def customers(session: SessionDep, org_id: OrgIdDep, user: UserDep) -> list[dict[str, object]]:
+    branch_ids = await mvp_service.visible_branch_ids(
+        session,
+        org_id,
+        user.id,
+        {"ops_admin", "branch_manager", "loan_officer", "reviewer", "finance", "auditor"},
+    )
+    statement = (
+        select(Borrower, DebtorProfile)
+        .join(
+            DebtorProfile,
+            (DebtorProfile.borrower_id == Borrower.id) & (DebtorProfile.org_id == org_id),
+            isouter=True,
         )
-    ).all()
+        .where(Borrower.org_id == org_id)
+    )
+    if branch_ids is not None:
+        visible_customers = select(LoanApplication.borrower_id).where(
+            LoanApplication.org_id == org_id,
+            LoanApplication.branch_id.in_(branch_ids),
+        )
+        statement = statement.where(Borrower.id.in_(visible_customers))
+    rows = (await session.execute(statement.order_by(Borrower.created_at.desc()))).all()
     return [
         {
             "id": borrower.id,
@@ -89,43 +99,54 @@ async def customers(session: SessionDep, org_id: OrgIdDep) -> list[dict[str, obj
 
 
 @router.get("/customers/{customer_id}")
-async def customer_detail(customer_id: UUID, session: SessionDep, org_id: OrgIdDep) -> dict[str, object]:
+async def customer_detail(customer_id: UUID, session: SessionDep, org_id: OrgIdDep, user: UserDep) -> dict[str, object]:
     """Return a tenant-scoped customer view for operational CRM."""
-    row = (
-        await session.execute(
-            select(Borrower, DebtorProfile)
-            .join(
-                DebtorProfile,
-                (DebtorProfile.borrower_id == Borrower.id) & (DebtorProfile.org_id == org_id),
-                isouter=True,
-            )
-            .where(Borrower.org_id == org_id, Borrower.id == customer_id)
+    branch_ids = await mvp_service.visible_branch_ids(
+        session,
+        org_id,
+        user.id,
+        {"ops_admin", "branch_manager", "loan_officer", "reviewer", "finance", "auditor"},
+    )
+    customer_statement = (
+        select(Borrower, DebtorProfile)
+        .join(
+            DebtorProfile,
+            (DebtorProfile.borrower_id == Borrower.id) & (DebtorProfile.org_id == org_id),
+            isouter=True,
         )
-    ).one_or_none()
+        .where(Borrower.org_id == org_id, Borrower.id == customer_id)
+    )
+    if branch_ids is not None:
+        visible_customers = select(LoanApplication.borrower_id).where(
+            LoanApplication.org_id == org_id,
+            LoanApplication.branch_id.in_(branch_ids),
+        )
+        customer_statement = customer_statement.where(Borrower.id.in_(visible_customers))
+    row = (await session.execute(customer_statement)).one_or_none()
     if row is None:
         from fastapi import HTTPException
 
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Debitur tidak ditemukan")
 
     borrower, profile = row
-    application_rows = (
-        await session.execute(
-            select(LoanApplication, Branch, Asset, LoanAccount)
-            .join(Branch, (Branch.id == LoanApplication.branch_id) & (Branch.org_id == org_id))
-            .join(
-                Asset,
-                (Asset.application_id == LoanApplication.id) & (Asset.org_id == org_id),
-                isouter=True,
-            )
-            .join(
-                LoanAccount,
-                (LoanAccount.application_id == LoanApplication.id) & (LoanAccount.org_id == org_id),
-                isouter=True,
-            )
-            .where(LoanApplication.org_id == org_id, LoanApplication.borrower_id == customer_id)
-            .order_by(LoanApplication.created_at.desc())
+    application_statement = (
+        select(LoanApplication, Branch, Asset, LoanAccount)
+        .join(Branch, (Branch.id == LoanApplication.branch_id) & (Branch.org_id == org_id))
+        .join(
+            Asset,
+            (Asset.application_id == LoanApplication.id) & (Asset.org_id == org_id),
+            isouter=True,
         )
-    ).all()
+        .join(
+            LoanAccount,
+            (LoanAccount.application_id == LoanApplication.id) & (LoanAccount.org_id == org_id),
+            isouter=True,
+        )
+        .where(LoanApplication.org_id == org_id, LoanApplication.borrower_id == customer_id)
+    )
+    if branch_ids is not None:
+        application_statement = application_statement.where(LoanApplication.branch_id.in_(branch_ids))
+    application_rows = (await session.execute(application_statement.order_by(LoanApplication.created_at.desc()))).all()
     application_ids = [application.id for application, _, _, _ in application_rows]
     loan_ids = [loan.id for _, _, _, loan in application_rows if loan is not None]
 
@@ -158,13 +179,12 @@ async def customer_detail(customer_id: UUID, session: SessionDep, org_id: OrgIdD
                 .order_by(CollectionCase.created_at.desc())
             )
         )
-    complaint_cases = list(
-        await session.scalars(
-            select(ComplaintCase)
-            .where(ComplaintCase.org_id == org_id, ComplaintCase.borrower_id == customer_id)
-            .order_by(ComplaintCase.created_at.desc())
-        )
+    complaint_statement = select(ComplaintCase).where(
+        ComplaintCase.org_id == org_id, ComplaintCase.borrower_id == customer_id
     )
+    if branch_ids is not None:
+        complaint_statement = complaint_statement.where(ComplaintCase.branch_id.in_(branch_ids))
+    complaint_cases = list(await session.scalars(complaint_statement.order_by(ComplaintCase.created_at.desc())))
 
     applications = [
         {
@@ -287,71 +307,88 @@ async def customer_detail(customer_id: UUID, session: SessionDep, org_id: OrgIdD
 
 
 @router.get("/domain-events")
-async def domain_events(session: SessionDep, org_id: OrgIdDep, limit: int = 200) -> list[dict[str, object]]:
+async def domain_events(
+    session: SessionDep, org_id: OrgIdDep, user: UserDep, limit: int = 200
+) -> list[dict[str, object]]:
     """Build an auditor-friendly business event feed from append-only operational records."""
+    await mvp_service.ensure_any_operational_role(session, org_id, user.id, {"ops_admin", "branch_manager", "auditor"})
+    branch_ids = await mvp_service.visible_branch_ids(
+        session, org_id, user.id, {"ops_admin", "branch_manager", "auditor"}
+    )
     safe_limit = min(max(limit, 1), 500)
+    status_statement = (
+        select(ApplicationStatusHistory, LoanApplication)
+        .join(
+            LoanApplication,
+            (LoanApplication.id == ApplicationStatusHistory.application_id) & (LoanApplication.org_id == org_id),
+        )
+        .where(ApplicationStatusHistory.org_id == org_id)
+    )
+    if branch_ids is not None:
+        status_statement = status_statement.where(LoanApplication.branch_id.in_(branch_ids))
     status_rows = (
-        await session.execute(
-            select(ApplicationStatusHistory, LoanApplication)
-            .join(
-                LoanApplication,
-                (LoanApplication.id == ApplicationStatusHistory.application_id) & (LoanApplication.org_id == org_id),
-            )
-            .where(ApplicationStatusHistory.org_id == org_id)
-            .order_by(ApplicationStatusHistory.created_at.desc())
-            .limit(safe_limit)
-        )
+        await session.execute(status_statement.order_by(ApplicationStatusHistory.created_at.desc()).limit(safe_limit))
     ).all()
+    collateral_statement = (
+        select(CollateralEvent, LoanApplication)
+        .join(
+            LoanApplication,
+            (LoanApplication.id == CollateralEvent.application_id) & (LoanApplication.org_id == org_id),
+        )
+        .where(CollateralEvent.org_id == org_id)
+    )
+    if branch_ids is not None:
+        collateral_statement = collateral_statement.where(LoanApplication.branch_id.in_(branch_ids))
     collateral_rows = (
-        await session.execute(
-            select(CollateralEvent, LoanApplication)
-            .join(
-                LoanApplication,
-                (LoanApplication.id == CollateralEvent.application_id) & (LoanApplication.org_id == org_id),
-            )
-            .where(CollateralEvent.org_id == org_id)
-            .order_by(CollateralEvent.occurred_at.desc())
-            .limit(safe_limit)
-        )
+        await session.execute(collateral_statement.order_by(CollateralEvent.occurred_at.desc()).limit(safe_limit))
     ).all()
+    cash_statement = (
+        select(CashTransaction)
+        .join(Cashbox, (Cashbox.id == CashTransaction.cashbox_id) & (Cashbox.org_id == org_id))
+        .where(CashTransaction.org_id == org_id)
+    )
+    if branch_ids is not None:
+        cash_statement = cash_statement.where(Cashbox.branch_id.in_(branch_ids))
     cash_rows = list(
-        await session.scalars(
-            select(CashTransaction)
-            .where(CashTransaction.org_id == org_id)
-            .order_by(CashTransaction.occurred_at.desc())
-            .limit(safe_limit)
-        )
+        await session.scalars(cash_statement.order_by(CashTransaction.occurred_at.desc()).limit(safe_limit))
     )
-    report_rows = list(
-        await session.scalars(
-            select(RegulatoryReportRun)
-            .where(RegulatoryReportRun.org_id == org_id)
-            .order_by(RegulatoryReportRun.created_at.desc())
-            .limit(safe_limit)
-        )
-    )
-    kyc_rows = (
-        await session.execute(
-            select(KycEvent, KycVerification, Borrower)
-            .join(
-                KycVerification, (KycVerification.id == KycEvent.verification_id) & (KycVerification.org_id == org_id)
+    report_rows = (
+        list(
+            await session.scalars(
+                select(RegulatoryReportRun)
+                .where(RegulatoryReportRun.org_id == org_id)
+                .order_by(RegulatoryReportRun.created_at.desc())
+                .limit(safe_limit)
             )
-            .join(Borrower, (Borrower.id == KycVerification.borrower_id) & (Borrower.org_id == org_id))
-            .where(KycEvent.org_id == org_id)
-            .order_by(KycEvent.occurred_at.desc())
-            .limit(safe_limit)
         )
-    ).all()
+        if branch_ids is None
+        else []
+    )
+    kyc_statement = (
+        select(KycEvent, KycVerification, Borrower)
+        .join(KycVerification, (KycVerification.id == KycEvent.verification_id) & (KycVerification.org_id == org_id))
+        .join(Borrower, (Borrower.id == KycVerification.borrower_id) & (Borrower.org_id == org_id))
+        .where(KycEvent.org_id == org_id)
+    )
+    if branch_ids is not None:
+        visible_customers = select(LoanApplication.borrower_id).where(
+            LoanApplication.org_id == org_id,
+            LoanApplication.branch_id.in_(branch_ids),
+        )
+        kyc_statement = kyc_statement.where(Borrower.id.in_(visible_customers))
+    kyc_rows = (await session.execute(kyc_statement.order_by(KycEvent.occurred_at.desc()).limit(safe_limit))).all()
+    approval_statement = (
+        select(ApprovalEvent, ApprovalRequest)
+        .join(
+            ApprovalRequest,
+            (ApprovalRequest.id == ApprovalEvent.approval_id) & (ApprovalRequest.org_id == org_id),
+        )
+        .where(ApprovalEvent.org_id == org_id)
+    )
+    if branch_ids is not None:
+        approval_statement = approval_statement.where(ApprovalRequest.branch_id.in_(branch_ids))
     approval_rows = (
-        await session.execute(
-            select(ApprovalEvent, ApprovalRequest)
-            .join(
-                ApprovalRequest, (ApprovalRequest.id == ApprovalEvent.approval_id) & (ApprovalRequest.org_id == org_id)
-            )
-            .where(ApprovalEvent.org_id == org_id)
-            .order_by(ApprovalEvent.occurred_at.desc())
-            .limit(safe_limit)
-        )
+        await session.execute(approval_statement.order_by(ApprovalEvent.occurred_at.desc()).limit(safe_limit))
     ).all()
 
     events: list[dict[str, object]] = []

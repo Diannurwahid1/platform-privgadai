@@ -406,6 +406,61 @@ async def ensure_any_operational_role(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Operational role is insufficient")
 
 
+async def visible_branch_ids(
+    session: AsyncSession,
+    org_id: UUID,
+    user_id: UUID,
+    allowed_roles: set[str],
+) -> set[UUID] | None:
+    """Return the branches visible to an operator.
+
+    ``None`` means tenant-wide access for an organization owner/admin. Members
+    only receive branches covered by an active operational assignment with one
+    of the requested roles. An empty set is a valid deny-all result.
+    """
+    membership = await session.scalar(
+        select(Membership).where(Membership.org_id == org_id, Membership.user_id == user_id)
+    )
+    if membership is None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "No membership in active tenant")
+    if membership.role.value in {"owner", "admin"}:
+        return None
+    return set(
+        await session.scalars(
+            select(StaffAssignment.branch_id).where(
+                StaffAssignment.org_id == org_id,
+                StaffAssignment.user_id == user_id,
+                StaffAssignment.operational_role.in_(allowed_roles),
+                StaffAssignment.is_active,
+            )
+        )
+    )
+
+
+async def ensure_customer_access(
+    session: AsyncSession,
+    org_id: UUID,
+    user_id: UUID,
+    borrower_id: UUID,
+    allowed_roles: set[str],
+) -> None:
+    """Require access to at least one branch relationship for a customer."""
+    branch_ids = await visible_branch_ids(session, org_id, user_id, allowed_roles)
+    if branch_ids is None:
+        return
+    visible_application = await session.scalar(
+        select(LoanApplication.id)
+        .where(
+            LoanApplication.org_id == org_id,
+            LoanApplication.borrower_id == borrower_id,
+            LoanApplication.branch_id.in_(branch_ids),
+        )
+        .limit(1)
+    )
+    if visible_application is None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Customer is outside the assigned branch scope")
+
+
 async def get_application(session: AsyncSession, org_id: UUID, application_id: UUID) -> LoanApplication:
     application = await session.scalar(
         select(LoanApplication).where(LoanApplication.id == application_id, LoanApplication.org_id == org_id)
@@ -910,15 +965,20 @@ async def create_custody_event(
     return item
 
 
-async def list_custody_movements(session: AsyncSession, org_id: UUID) -> list[dict[str, object]]:
-    rows = list(
-        await session.scalars(
-            select(CustodyMovement)
-            .where(CustodyMovement.org_id == org_id)
-            .order_by(CustodyMovement.created_at.desc())
-            .limit(200)
+async def list_custody_movements(
+    session: AsyncSession, org_id: UUID, *, branch_ids: set[UUID] | None = None
+) -> list[dict[str, object]]:
+    statement = (
+        select(CustodyMovement)
+        .join(
+            LoanApplication,
+            (LoanApplication.id == CustodyMovement.application_id) & (LoanApplication.org_id == org_id),
         )
+        .where(CustodyMovement.org_id == org_id)
     )
+    if branch_ids is not None:
+        statement = statement.where(LoanApplication.branch_id.in_(branch_ids))
+    rows = list(await session.scalars(statement.order_by(CustodyMovement.created_at.desc()).limit(200)))
     return [
         {
             "id": item.id,
@@ -1357,8 +1417,27 @@ async def create_incident(session: AsyncSession, org_id: UUID, actor_id: UUID, d
     return item
 
 
-async def get_application_detail(session: AsyncSession, org_id: UUID, application_id: UUID) -> ApplicationDetail:
+async def get_application_detail(
+    session: AsyncSession, org_id: UUID, actor_id: UUID, application_id: UUID
+) -> ApplicationDetail:
     application = await get_application(session, org_id, application_id)
+    await ensure_operational_access(
+        session,
+        org_id,
+        actor_id,
+        application.branch_id,
+        {
+            "ops_admin",
+            "branch_manager",
+            "loan_officer",
+            "reviewer",
+            "appraiser",
+            "field_agent",
+            "custodian",
+            "finance",
+            "auditor",
+        },
+    )
     branch = await session.scalar(select(Branch).where(Branch.id == application.branch_id, Branch.org_id == org_id))
     borrower = await session.scalar(
         select(Borrower).where(Borrower.id == application.borrower_id, Borrower.org_id == org_id)
@@ -1505,8 +1584,17 @@ async def get_application_detail(session: AsyncSession, org_id: UUID, applicatio
     )
 
 
-async def get_collateral_timeline(session: AsyncSession, org_id: UUID, application_id: UUID) -> CollateralTimeline:
+async def get_collateral_timeline(
+    session: AsyncSession, org_id: UUID, actor_id: UUID, application_id: UUID
+) -> CollateralTimeline:
     application = await get_application(session, org_id, application_id)
+    await ensure_operational_access(
+        session,
+        org_id,
+        actor_id,
+        application.branch_id,
+        {"ops_admin", "branch_manager", "loan_officer", "reviewer", "appraiser", "custodian", "auditor"},
+    )
     asset = await _get_asset(session, org_id, application_id)
     events = list(
         await session.scalars(

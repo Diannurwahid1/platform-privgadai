@@ -7,7 +7,7 @@ Dokumen ini menjadi daftar kerja teknis aktif berdasarkan business blueprint dan
 | Area | Implementasi yang tersedia | Gate berikutnya |
 |---|---|---|
 | Enterprise shell | Sidebar collapse/expand, route unik, satu active leaf, global search | visual regression, keyboard audit, WCAG |
-| Multi-tenant | tenant scoped query, composite tenant FK pada domain kritis, role dan branch assignment | negative authorization matrix seluruh object/export/job |
+| Multi-tenant | tenant scoped query, composite tenant FK pada domain kritis, role dan branch assignment, branch filtering pada dashboard/inbox/customer/KYC/evidence/custody/audit inti | perluasan negative authorization matrix ke finance, regulator, job, dan seluruh export |
 | Customer 360 | profil, relasi pengajuan/pinjaman/agunan/collection, consent, activity | duplicate/merge/correction/freeze workflow |
 | KYC/CDD | data KTP/NIK terenkripsi, masking, upload KTP terenkripsi, checksum, malware scan/karantina, maker-checker, expiry, event history | provider Dukcapil/eKYC resmi, PEP/sanction provider, monitoring berkala |
 | Loan origination | intake, queue, detail, state guard, offer, acceptance, agreement evidence dasar | assignment balancing, request changes, e-sign provider, policy exception |
@@ -31,6 +31,7 @@ Dokumen ini menjadi daftar kerja teknis aktif berdasarkan business blueprint dan
 ## P0 — sebelum pilot operasional terkontrol
 
 - [ ] Lengkapi branch/role/object authorization tests pada seluruh detail, command, export, dan file.
+  - Matriks negatif untuk dashboard, inbox, detail pengajuan, Customer 360, KYC, timeline agunan, evidence download, custody, serta business audit inti sudah tersedia. Finance/collection/regulatory/export dan job terjadwal masih harus diaudit menyeluruh sebelum gate ditutup.
 - [x] Tambahkan payment allocation rule, receipt numbering, refund, waiver, adjustment, dan contra posting.
 - [x] Bangun reconciliation workbench untuk cashbox, loan subledger, GL, dan bank statement.
   - Workbench membandingkan cash transaction ↔ GL, loan subledger ↔ receivable GL, dan total statement ↔ receipt per tanggal/cabang; snapshot, tolerance, variance, exception, root cause, dan approval resolution tersimpan.

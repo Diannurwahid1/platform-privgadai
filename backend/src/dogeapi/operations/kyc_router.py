@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from sqlalchemy import select
 
 from dogeapi.deps import OrgIdDep, SessionDep, SettingsDep, UserDep
-from dogeapi.models import Borrower, KycVerification
+from dogeapi.models import Borrower, KycVerification, LoanApplication
 from dogeapi.operations import kyc_service, mvp_service
 from dogeapi.operations.erp_schemas import ERPActionResult
 from dogeapi.operations.kyc_schemas import KycCreate, KycReview
@@ -21,18 +21,21 @@ queue_router = APIRouter(prefix="/v1/kyc", tags=["customer-kyc"], dependencies=[
 
 @queue_router.get("/verifications")
 async def kyc_verification_queue(session: SessionDep, org_id: OrgIdDep, user: UserDep) -> list[dict[str, object]]:
-    await mvp_service.ensure_any_operational_role(
+    branch_ids = await mvp_service.visible_branch_ids(
         session, org_id, user.id, {"ops_admin", "branch_manager", "loan_officer", "reviewer", "auditor"}
     )
-    rows = (
-        await session.execute(
-            select(KycVerification, Borrower)
-            .join(Borrower, (Borrower.id == KycVerification.borrower_id) & (Borrower.org_id == org_id))
-            .where(KycVerification.org_id == org_id)
-            .order_by(KycVerification.created_at.desc())
-            .limit(500)
+    statement = (
+        select(KycVerification, Borrower)
+        .join(Borrower, (Borrower.id == KycVerification.borrower_id) & (Borrower.org_id == org_id))
+        .where(KycVerification.org_id == org_id)
+    )
+    if branch_ids is not None:
+        visible_customers = select(LoanApplication.borrower_id).where(
+            LoanApplication.org_id == org_id,
+            LoanApplication.branch_id.in_(branch_ids),
         )
-    ).all()
+        statement = statement.where(KycVerification.borrower_id.in_(visible_customers))
+    rows = (await session.execute(statement.order_by(KycVerification.created_at.desc()).limit(500))).all()
     return [
         {
             "id": item.id,
@@ -54,7 +57,16 @@ async def kyc_verification_queue(session: SessionDep, org_id: OrgIdDep, user: Us
 
 
 @router.get("/{customer_id}/kyc")
-async def get_customer_kyc(customer_id: UUID, session: SessionDep, org_id: OrgIdDep) -> dict[str, object]:
+async def get_customer_kyc(
+    customer_id: UUID, session: SessionDep, org_id: OrgIdDep, user: UserDep
+) -> dict[str, object]:
+    await mvp_service.ensure_customer_access(
+        session,
+        org_id,
+        user.id,
+        customer_id,
+        {"ops_admin", "branch_manager", "loan_officer", "reviewer", "auditor"},
+    )
     return await kyc_service.serialize_customer_kyc(session, org_id, customer_id)
 
 
@@ -64,8 +76,12 @@ async def get_customer_kyc(customer_id: UUID, session: SessionDep, org_id: OrgId
 async def start_customer_kyc(
     customer_id: UUID, data: KycCreate, session: SessionDep, settings: SettingsDep, org_id: OrgIdDep, user: UserDep
 ) -> dict[str, object]:
-    await mvp_service.ensure_any_operational_role(
-        session, org_id, user.id, {"ops_admin", "branch_manager", "loan_officer", "reviewer"}
+    await mvp_service.ensure_customer_access(
+        session,
+        org_id,
+        user.id,
+        customer_id,
+        {"ops_admin", "branch_manager", "loan_officer", "reviewer"},
     )
     item = await kyc_service.create_verification(session, settings, org_id, user.id, customer_id, data)
     await session.commit()
@@ -88,8 +104,12 @@ async def upload_kyc_document(
     document_side: Annotated[str, Form(pattern="^(ktp_front|selfie|supporting_document)$")],
     file: Annotated[UploadFile, File()],
 ) -> ERPActionResult:
-    await mvp_service.ensure_any_operational_role(
-        session, org_id, user.id, {"ops_admin", "branch_manager", "loan_officer", "reviewer"}
+    await mvp_service.ensure_customer_access(
+        session,
+        org_id,
+        user.id,
+        customer_id,
+        {"ops_admin", "branch_manager", "loan_officer", "reviewer"},
     )
     allowed = {"image/jpeg", "image/png", "image/webp", "application/pdf"}
     if file.content_type not in allowed:
@@ -125,7 +145,9 @@ async def upload_kyc_document(
 async def review_customer_kyc(
     customer_id: UUID, verification_id: UUID, data: KycReview, session: SessionDep, org_id: OrgIdDep, user: UserDep
 ) -> dict[str, object]:
-    await mvp_service.ensure_any_operational_role(session, org_id, user.id, {"ops_admin", "branch_manager", "reviewer"})
+    await mvp_service.ensure_customer_access(
+        session, org_id, user.id, customer_id, {"ops_admin", "branch_manager", "reviewer"}
+    )
     item = await kyc_service.review_verification(session, org_id, user.id, customer_id, verification_id, data)
     await session.commit()
     return {"id": item.id, "status": item.status, "message": "Keputusan KYC tercatat"}

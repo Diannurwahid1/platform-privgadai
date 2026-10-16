@@ -52,17 +52,30 @@ router = APIRouter(
 
 
 @router.get("/operations/dashboard", response_model=OperationsDashboardResponse)
-async def operations_dashboard(session: SessionDep, org_id: OrgIdDep) -> OperationsDashboardResponse:
-    return await service.get_operations_dashboard(session, org_id)
+async def operations_dashboard(session: SessionDep, org_id: OrgIdDep, user: UserDep) -> OperationsDashboardResponse:
+    branch_ids = await mvp_service.visible_branch_ids(
+        session,
+        org_id,
+        user.id,
+        {"ops_admin", "branch_manager", "loan_officer", "reviewer", "appraiser", "custodian", "finance", "auditor"},
+    )
+    return await service.get_operations_dashboard(session, org_id, branch_ids=branch_ids)
 
 
 @router.get("/applications", response_model=list[ApplicationQueueItem])
 async def applications_inbox(
     session: SessionDep,
     org_id: OrgIdDep,
+    user: UserDep,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> list[ApplicationQueueItem]:
-    return await service.list_application_queue(session, org_id, limit=limit)
+    branch_ids = await mvp_service.visible_branch_ids(
+        session,
+        org_id,
+        user.id,
+        {"ops_admin", "branch_manager", "loan_officer", "reviewer", "appraiser", "custodian", "finance", "auditor"},
+    )
+    return await service.list_application_queue(session, org_id, limit=limit, branch_ids=branch_ids)
 
 
 @router.get("/field/tasks", response_model=list[FieldTaskItem])
@@ -173,8 +186,10 @@ async def create_application(
 
 
 @router.get("/applications/{application_id}", response_model=ApplicationDetail)
-async def application_detail(application_id: UUID, session: SessionDep, org_id: OrgIdDep) -> ApplicationDetail:
-    return await mvp_service.get_application_detail(session, org_id, application_id)
+async def application_detail(
+    application_id: UUID, session: SessionDep, org_id: OrgIdDep, user: UserDep
+) -> ApplicationDetail:
+    return await mvp_service.get_application_detail(session, org_id, user.id, application_id)
 
 
 @router.post("/applications/{application_id}/transition", response_model=ActionResult, dependencies=[write_access])
@@ -358,10 +373,10 @@ async def create_custody_event(
 
 @router.get("/custody/movements")
 async def custody_movements(session: SessionDep, org_id: OrgIdDep, user: UserDep) -> list[dict[str, object]]:
-    await mvp_service.ensure_any_operational_role(
+    branch_ids = await mvp_service.visible_branch_ids(
         session, org_id, user.id, {"ops_admin", "branch_manager", "custodian", "auditor"}
     )
-    return await mvp_service.list_custody_movements(session, org_id)
+    return await mvp_service.list_custody_movements(session, org_id, branch_ids=branch_ids)
 
 
 @router.post(
@@ -437,5 +452,7 @@ async def create_incident(data: IncidentCreate, session: SessionDep, org_id: Org
 
 
 @router.get("/collateral/{application_id}/timeline", response_model=CollateralTimeline)
-async def collateral_timeline(application_id: UUID, session: SessionDep, org_id: OrgIdDep) -> CollateralTimeline:
-    return await mvp_service.get_collateral_timeline(session, org_id, application_id)
+async def collateral_timeline(
+    application_id: UUID, session: SessionDep, org_id: OrgIdDep, user: UserDep
+) -> CollateralTimeline:
+    return await mvp_service.get_collateral_timeline(session, org_id, user.id, application_id)
