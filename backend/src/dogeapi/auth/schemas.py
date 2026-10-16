@@ -20,6 +20,7 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+    mfa_code: str | None = Field(default=None, min_length=6, max_length=24)
 
 
 class TokenPairResponse(BaseModel):
@@ -59,3 +60,30 @@ class VerifyEmailRequest(BaseModel):
 
 class MessageResponse(BaseModel):
     detail: str
+
+
+class PasswordConfirmation(BaseModel):
+    password: str
+
+
+class MfaActivateRequest(BaseModel):
+    code: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
+
+
+class MfaSetupResponse(BaseModel):
+    secret: str
+    otpauth_uri: str
+
+
+class MfaActivateResponse(BaseModel):
+    enabled: bool
+    recovery_codes: list[str]
+
+
+class StepUpRequest(BaseModel):
+    password: str
+    mfa_code: str | None = Field(default=None, min_length=6, max_length=24)
+
+
+class SessionRevokeRequest(BaseModel):
+    reason: str = Field(min_length=5, max_length=300)

@@ -55,6 +55,8 @@ class Settings(BaseSettings):
     MALWARE_SCANNER_MODE: Literal["builtin", "clamav"] = "builtin"
     CLAMAV_EXECUTABLE: str = "clamscan"
     MALWARE_SCAN_TIMEOUT_SECONDS: int = 30
+    STEP_UP_TTL_MINUTES: int = 10
+    PRIVILEGED_MFA_ENFORCED: bool = False
 
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3001"
 
@@ -151,6 +153,8 @@ class Settings(BaseSettings):
                 raise ValueError("BUILD_SHA must identify the deployed release in production")
             if self.MALWARE_SCANNER_MODE != "clamav":
                 raise ValueError("MALWARE_SCANNER_MODE=clamav is required in production")
+            if not self.PRIVILEGED_MFA_ENFORCED:
+                raise ValueError("PRIVILEGED_MFA_ENFORCED must be true in production")
         should_validate_integrations = self.APP_ENV != "test"
 
         if should_validate_integrations and self.FEATURE_EMAIL_DELIVERY:

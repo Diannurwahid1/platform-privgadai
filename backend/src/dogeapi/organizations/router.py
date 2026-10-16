@@ -16,8 +16,9 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Response, status
 
-from dogeapi.deps import AuthDep, SessionDep, SettingsDep, UserDep
-from dogeapi.models import Organization, Role, User
+from dogeapi.auth import security_service
+from dogeapi.deps import AuthDep, SessionDep, SettingsDep, TokenDep, UserDep
+from dogeapi.models import AuthSession, Organization, Role, User
 from dogeapi.organizations import service
 from dogeapi.organizations.permissions import scopes_for_role
 from dogeapi.organizations.schemas import (
@@ -49,11 +50,24 @@ async def _require_member(session: SessionDep, org: Organization, user: User) ->
     return membership.role
 
 
-def _token_pair_with_org(auth: AuthDep, *, user_id: str, org_id: UUID, role: Role) -> TokenPairResponse:
+def _token_pair_with_org(
+    auth: AuthDep,
+    *,
+    user_id: str,
+    org_id: UUID,
+    role: Role,
+    session_id: str | None,
+    amr: object | None,
+) -> TokenPairResponse:
+    data: dict[str, object] = {"org_id": str(org_id), "role": role.value}
+    if session_id:
+        data["sid"] = session_id
+    if amr:
+        data["amr"] = amr
     pair = auth.create_token_pair(
         uid=user_id,
         fresh=False,
-        data={"org_id": str(org_id), "role": role.value},
+        data=data,
         access_scopes=scopes_for_role(role),
         refresh_scopes=scopes_for_role(role),
     )
@@ -107,6 +121,7 @@ async def switch_org(
     session: SessionDep,
     user: UserDep,
     auth: AuthDep,
+    payload: TokenDep,
 ) -> TokenPairResponse:
     """Re-issue the token pair scoped to the requested org.
 
@@ -118,7 +133,34 @@ async def switch_org(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found")
     role = await _require_member(session, org, user)
 
-    pair = _token_pair_with_org(auth, user_id=str(user.id), org_id=org.id, role=role)
+    extras = payload.model_extra or {}
+    sid = str(extras.get("sid")) if extras.get("sid") else None
+    pair = _token_pair_with_org(
+        auth,
+        user_id=str(user.id),
+        org_id=org.id,
+        role=role,
+        session_id=sid,
+        amr=extras.get("amr"),
+    )
+    if sid:
+        try:
+            auth_session = await session.get(AuthSession, UUID(sid))
+        except ValueError:
+            auth_session = None
+        if auth_session is not None and auth_session.user_id == user.id:
+            auth_session.active_org_id = org.id
+            security_service.add_security_event(
+                session,
+                event_type="OrganizationSwitched",
+                outcome="success",
+                description="Active tenant context changed",
+                user_id=user.id,
+                actor_user_id=user.id,
+                auth_session_id=auth_session.id,
+                org_id=org.id,
+                metadata={"role": role.value},
+            )
     auth.set_access_cookies(pair.access_token, response)
     auth.set_refresh_cookies(pair.refresh_token, response)
     return pair

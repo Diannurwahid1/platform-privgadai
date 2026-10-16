@@ -24,6 +24,7 @@ def test_production_accepts_hardened_core_settings() -> None:
         PII_ENCRYPTION_KEY="production-fernet-key",
         BUILD_SHA="release-2026.10.16",
         MALWARE_SCANNER_MODE="clamav",
+        PRIVILEGED_MFA_ENFORCED=True,
     )
 
     assert settings.is_production is True
@@ -36,6 +37,19 @@ def test_production_requires_release_identity() -> None:
             JWT_SECRET_KEY="x" * 40,
             JWT_COOKIE_SECURE=True,
             PII_ENCRYPTION_KEY="production-fernet-key",
+        )
+
+
+def test_production_requires_privileged_mfa_enforcement() -> None:
+    with pytest.raises(ValidationError, match="PRIVILEGED_MFA_ENFORCED"):
+        Settings(
+            APP_ENV="production",
+            JWT_SECRET_KEY="x" * 40,
+            JWT_COOKIE_SECURE=True,
+            PII_ENCRYPTION_KEY="production-fernet-key",
+            BUILD_SHA="release-2026.10.16",
+            MALWARE_SCANNER_MODE="clamav",
+            PRIVILEGED_MFA_ENFORCED=False,
         )
 
 

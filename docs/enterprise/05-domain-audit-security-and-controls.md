@@ -132,7 +132,9 @@ Policy decision dicatat beserta policy version dan hasil allow/deny.
 - [ ] SEC-101: tenant/branch negative authorization test di seluruh API.
 - [ ] SEC-102: policy engine RBAC/ABAC dan policy decision log.
 - [ ] SEC-103: maker-checker serta conflict of interest enforcement.
-- [ ] SEC-104: MFA/session/security center untuk privileged users.
+- [x] SEC-104: MFA/session/security center untuk privileged users.
+
+Implementasi SEC-104 mencakup TOTP RFC 6238 dengan secret terenkripsi, recovery code sekali pakai yang hanya disimpan sebagai hash, lockout percobaan, session record dengan absolute expiry dan immediate revoke, current/remote device inventory, step-up berjangka, serta security event ledger. Token baru membawa `sid` dan session tersebut divalidasi pada setiap request. Production mewajibkan `PRIVILEGED_MFA_ENFORCED=true`; approval dan perubahan delegasi memerlukan step-up aktif.
 - [ ] SEC-105: data classification, encryption, masking, secure file access.
 - [ ] OPS-101: backup/restore, DR drill, monitoring, alert, runbook, incident response.
 

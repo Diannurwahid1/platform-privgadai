@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends
 from dogeapi.deps import OrgIdDep, SessionDep, UserDep
 from dogeapi.operations import approval_service, mvp_service
 from dogeapi.operations.approval_schemas import ApprovalDecision, ApprovalDelegationCreate
-from dogeapi.security import require_scope
+from dogeapi.security import require_scope, require_step_up
 
 router = APIRouter(prefix="/v1/approvals", tags=["approvals"], dependencies=[Depends(require_scope("org:read"))])
 
@@ -20,7 +20,7 @@ async def list_approvals(session: SessionDep, org_id: OrgIdDep, user: UserDep) -
     return await approval_service.approval_queue(session, org_id)
 
 
-@router.post("/{approval_id}/decision", dependencies=[Depends(require_scope("org:write"))])
+@router.post("/{approval_id}/decision", dependencies=[Depends(require_scope("org:write")), Depends(require_step_up)])
 async def decide_approval(
     approval_id: UUID, data: ApprovalDecision, session: SessionDep, org_id: OrgIdDep, user: UserDep
 ) -> dict[str, object]:
@@ -37,7 +37,9 @@ async def list_delegations(session: SessionDep, org_id: OrgIdDep, user: UserDep)
     return await approval_service.list_delegations(session, org_id)
 
 
-@router.post("/delegations", status_code=201, dependencies=[Depends(require_scope("org:write"))])
+@router.post(
+    "/delegations", status_code=201, dependencies=[Depends(require_scope("org:write")), Depends(require_step_up)]
+)
 async def create_delegation(
     data: ApprovalDelegationCreate, session: SessionDep, org_id: OrgIdDep, user: UserDep
 ) -> dict[str, object]:
@@ -57,7 +59,10 @@ async def create_delegation(
     return {"id": item.id, "status": "active", "message": "Delegasi approval dicatat"}
 
 
-@router.post("/delegations/{delegation_id}/revoke", dependencies=[Depends(require_scope("org:write"))])
+@router.post(
+    "/delegations/{delegation_id}/revoke",
+    dependencies=[Depends(require_scope("org:write")), Depends(require_step_up)],
+)
 async def revoke_delegation(
     delegation_id: UUID, session: SessionDep, org_id: OrgIdDep, user: UserDep
 ) -> dict[str, object]:

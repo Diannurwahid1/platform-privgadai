@@ -39,3 +39,52 @@ export const verifyEmail = (token: string) =>
     method: "POST",
     json: { token },
   });
+
+export type SecurityOverview = {
+  mfa_enabled: boolean;
+  mfa_activated_at: string | null;
+  recovery_codes_remaining: number;
+  current_session_id: string | null;
+};
+export type AuthSessionItem = {
+  id: string;
+  ip_address: string | null;
+  user_agent: string | null;
+  created_at: string;
+  last_seen_at: string;
+  expires_at: string;
+  revoked_at: string | null;
+  revoke_reason: string | null;
+  mfa_authenticated: boolean;
+  step_up_until: string | null;
+  is_current: boolean;
+  is_active: boolean;
+};
+export type SecurityEventItem = {
+  id: string;
+  event_type: string;
+  severity: string;
+  outcome: string;
+  description: string;
+  ip_address: string | null;
+  user_agent: string | null;
+  event_metadata: Record<string, unknown>;
+  occurred_at: string;
+};
+export const getSecurityOverview = () => apiFetch<SecurityOverview>("/auth/security");
+export const listAuthSessions = () => apiFetch<AuthSessionItem[]>("/auth/sessions");
+export const listSecurityEvents = () => apiFetch<SecurityEventItem[]>("/auth/security-events");
+export const setupMfa = (password: string) =>
+  apiFetch<{ secret: string; otpauth_uri: string }>("/auth/mfa/setup", { method: "POST", json: { password } });
+export const activateMfa = (code: string) =>
+  apiFetch<{ enabled: boolean; recovery_codes: string[] }>("/auth/mfa/activate", { method: "POST", json: { code } });
+export const stepUpAuthentication = (password: string, mfa_code?: string) =>
+  apiFetch<{ session_id: string; step_up_until: string; status: string }>("/auth/step-up", {
+    method: "POST",
+    json: { password, mfa_code: mfa_code || undefined },
+  });
+export const revokeAuthSession = (id: string, reason: string) =>
+  apiFetch<{ id: string; status: string; revoked_at: string }>(`/auth/sessions/${id}/revoke`, {
+    method: "POST",
+    json: { reason },
+  });

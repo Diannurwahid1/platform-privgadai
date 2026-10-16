@@ -19,6 +19,7 @@ import {
   ScrollText,
   Settings,
   ShieldAlert,
+  ShieldCheck,
   Truck,
   Users,
 } from "lucide-react";
@@ -75,6 +76,7 @@ export function buildPartnerNavigation(slug: string): PartnerNavGroup[] {
     { id: "management", label: "Management", items: [
       { id: "master", label: "Master Data", href: `${root}/management/master-data`, aliases: [`${root}/master-data`], icon: Building2, match: "section" },
       { id: "members", label: "Tim & Akses", href: `${root}/management/team-access`, aliases: [`${root}/members`], icon: Users, match: "section" },
+      { id: "security", label: "Security Center", href: `${root}/management/security`, icon: ShieldCheck, match: "section" },
       { id: "settings", label: "Pengaturan", href: `${root}/management/settings`, aliases: [`${root}/settings`], icon: Settings, match: "section" },
     ] },
   ];

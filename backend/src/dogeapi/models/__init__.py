@@ -58,6 +58,7 @@ from dogeapi.models.oauth_account import OAuthAccount
 from dogeapi.models.operations import ApplicationStatusHistory, Asset, Borrower, Branch, LoanApplication
 from dogeapi.models.organization import Organization
 from dogeapi.models.payments import PaymentAdjustment, PaymentReceipt, ReconciliationRun
+from dogeapi.models.security import AuthSession, SecurityEvent, UserSecurityProfile
 from dogeapi.models.subscription import Subscription
 from dogeapi.models.user import User
 
@@ -73,6 +74,7 @@ __all__ = (
     "Asset",
     "AssetCategory",
     "AuditLog",
+    "AuthSession",
     "AuthTokenStore",
     "Base",
     "Borrower",
@@ -123,6 +125,7 @@ __all__ = (
     "RegulatoryReportRun",
     "RegulatoryReportTemplate",
     "Role",
+    "SecurityEvent",
     "SettlementVerification",
     "StaffAssignment",
     "Subscription",
@@ -130,4 +133,5 @@ __all__ = (
     "TimestampMixin",
     "UUIDPrimaryKeyMixin",
     "User",
+    "UserSecurityProfile",
 )

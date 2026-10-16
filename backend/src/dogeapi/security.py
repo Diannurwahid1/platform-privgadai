@@ -10,6 +10,7 @@ These compose with the basic ``deps.get_token_payload`` to enforce both:
 from __future__ import annotations
 
 from collections.abc import Callable, Coroutine
+from datetime import UTC, datetime
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -17,14 +18,16 @@ from authx import TokenPayload
 from authx._internal._scopes import has_required_scopes
 from authx.exceptions import InsufficientScopeError
 from fastapi import Depends, HTTPException, Path, Request, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dogeapi.db import get_session
 from dogeapi.deps import (
     _token_extra,
+    get_app_settings,
     get_token_payload,
 )
-from dogeapi.models import Organization
+from dogeapi.models import AuthSession, Organization
 from dogeapi.organizations import service
 
 
@@ -73,8 +76,40 @@ async def require_org_match(
 OrgMatch = Annotated[Organization, Depends(require_org_match)]
 
 
+async def require_step_up(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Any, Depends(get_app_settings)],
+    payload: Annotated[TokenPayload, Depends(get_token_payload)],
+) -> TokenPayload:
+    """Require a recent password+MFA confirmation for sensitive commands.
+
+    Development and test remain usable without forced enrollment; production
+    settings cannot disable this gate.
+    """
+    if not settings.PRIVILEGED_MFA_ENFORCED:
+        return payload
+    sid = _token_extra(payload, "sid")
+    if sid is None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Step-up authentication required")
+    try:
+        session_id = UUID(str(sid))
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Step-up authentication required") from exc
+    auth_session = await session.scalar(
+        select(AuthSession).where(
+            AuthSession.id == session_id,
+            AuthSession.revoked_at.is_(None),
+            AuthSession.step_up_until > datetime.now(UTC),
+        )
+    )
+    if auth_session is None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Step-up authentication required")
+    return payload
+
+
 __all__ = (
     "OrgMatch",
     "require_org_match",
     "require_scope",
+    "require_step_up",
 )

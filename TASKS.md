@@ -25,6 +25,7 @@ Dokumen ini menjadi daftar kerja teknis aktif berdasarkan business blueprint dan
 | OJK monthly | controlled snapshot, Form 1100/2100/9100 package, validation, reconciliation, checksum, sign-off | seluruh lampiran resmi, official validator test, submission acknowledgement |
 | SLIK | encrypted D01/F01/A01 snapshot, NIK protected at rest, validation, reconciliation, ZIP export | full official field/code dictionary, correction/delete semantics, official validator |
 | Configuration | version register per tenant/domain/key, JSON snapshot, checksum, impact diff, effective date, maker-checker, scheduled activation, supersede, rollback as new version | bind every operational engine to approved effective configuration, managed scheduler, schema validation per domain |
+| Identity security | TOTP MFA, one-time recovery code, encrypted secret, lockout, governed session inventory/revoke, step-up TTL, security event explorer | WebAuthn/passkey, enterprise IdP/SCIM, risk-based authentication |
 | Runtime | liveness/readiness, migration head check, request ID, headers, release identity | telemetry backend, SLO/alert routing, backup restore, DR, load/security test |
 
 ## P0 — sebelum pilot operasional terkontrol
@@ -42,7 +43,9 @@ Dokumen ini menjadi daftar kerja teknis aktif berdasarkan business blueprint dan
   - File diperiksa dari magic bytes, checksum SHA-256, active-content PDF, dan malware signature; file gagal dipindahkan ke zona karantina serta tidak dapat diunduh.
   - Appraisal/incident approval dan dispatch custody mewajibkan evidence bersih. KYC hanya dapat diverifikasi bila KTP depan berstatus bersih.
   - Environment production menolak startup bila scanner eksternal ClamAV tidak dipilih; mode built-in hanya untuk development/test.
-- [ ] Terapkan MFA privileged, session inventory/revoke, step-up auth, dan security event explorer.
+- [x] Terapkan MFA privileged, session inventory/revoke, step-up auth, dan security event explorer.
+  - TOTP secret terenkripsi, recovery code hanya sekali dan tersimpan sebagai hash, retry lockout, session ID tervalidasi per request, remote revoke, serta step-up 10 menit tersedia.
+  - Approval decision dan delegasi memakai step-up gate ketika enforcement production aktif. Production menolak konfigurasi yang mematikan privileged MFA.
 - [ ] Jalankan migration rehearsal, backup restore, load/soak, dependency/security scan, serta UAT per role dan cabang.
 
 ## P1 — sebelum produksi terbatas

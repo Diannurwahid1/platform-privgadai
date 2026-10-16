@@ -6,17 +6,19 @@ Centralised so feature modules don't reach into each other.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 from typing import Annotated, Any
 from uuid import UUID
 
 from authx import AuthX, TokenPayload
 from fastapi import Depends, HTTPException, Request, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dogeapi.auth.service import get_user_by_id
 from dogeapi.db import get_session
-from dogeapi.models import Role, User
+from dogeapi.models import AuthSession, Role, User
 from dogeapi.settings import Settings, get_settings
 from dogeapi.token_store import create_token_store
 
@@ -66,6 +68,26 @@ async def get_current_user(
     user = await get_user_by_id(session, user_id)
     if user is None or not user.is_active:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found or inactive")
+    sid = _token_extra(payload, "sid")
+    if sid:
+        try:
+            session_id = UUID(str(sid))
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid session claim") from exc
+        auth_session = await session.scalar(
+            select(AuthSession).where(
+                AuthSession.id == session_id,
+                AuthSession.user_id == user.id,
+                AuthSession.revoked_at.is_(None),
+                AuthSession.expires_at > datetime.now(UTC),
+            )
+        )
+        if auth_session is None:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Session expired or revoked")
+        if auth_session.last_seen_at < datetime.now(UTC) - timedelta(minutes=5):
+            auth_session.last_seen_at = datetime.now(UTC)
+    elif get_app_settings(request).is_production:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token has no governed session")
     request.state.audit_actor_id = str(user.id)
     return user
 

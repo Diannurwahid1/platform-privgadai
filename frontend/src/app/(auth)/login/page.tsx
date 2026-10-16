@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button";
 import { AuthOptions } from "@/components/auth-options";
 import type { ApiError } from "@/lib/api";
 
-type FieldErrors = Partial<Record<"email" | "password" | "form", string>>;
+type FieldErrors = Partial<Record<"email" | "password" | "mfa_code" | "form", string>>;
 
 export default function LoginPage() {
   const router = useRouter();
@@ -34,6 +34,7 @@ export default function LoginPage() {
     const parsed = loginSchema.safeParse({
       email: data.get("email"),
       password: data.get("password"),
+      mfa_code: String(data.get("mfa_code") ?? "") || undefined,
     });
     if (!parsed.success) {
       const fieldErrors: FieldErrors = {};
@@ -83,6 +84,17 @@ export default function LoginPage() {
                 required
               />
               <FieldError>{errors.email}</FieldError>
+            </Field>
+            <Field>
+              <Label htmlFor="mfa_code">Kode authenticator atau recovery code</Label>
+              <Input
+                id="mfa_code"
+                name="mfa_code"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                placeholder="Isi bila MFA sudah aktif"
+              />
+              <FieldError>{errors.mfa_code}</FieldError>
             </Field>
             <Field>
               <Label htmlFor="password">Password</Label>
