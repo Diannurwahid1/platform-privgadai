@@ -45,6 +45,7 @@ from dogeapi.models import (
     RegulatoryReportTemplate,
     TellerSession,
 )
+from dogeapi.operations.configuration_runtime import get_effective_payload
 from dogeapi.operations.erp_schemas import (
     AccountingPeriodCreate,
     CollectionNoteCreate,
@@ -1191,12 +1192,25 @@ async def create_regulatory_run(
     )
     if template is None:
         raise _not_found("Regulatory report template")
+    regulatory_policy = await get_effective_payload(
+        session, org_id, "regulatory", [template.report_type.lower(), "default"]
+    )
+    if regulatory_policy.get("require_active_template") is True and template.status != "active":
+        raise HTTPException(status.HTTP_409_CONFLICT, "Effective regulatory policy requires an active template")
     if data.period_end < data.period_start:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Report period is invalid")
     report = await financial_reports(session, org_id)
     validations: list[dict[str, object]] = []
     if template.status != "active":
         validations.append({"level": "warning", "code": "TEMPLATE_DRAFT", "message": "Template is not approved"})
+    if regulatory_policy.get("official_validator_required") is True:
+        validations.append(
+            {
+                "level": "error",
+                "code": "OFFICIAL_VALIDATOR_REQUIRED",
+                "message": "Paket harus lulus validator resmi sebelum dapat diajukan untuk sign-off",
+            }
+        )
     if template.report_type == "SLIK":
         payload, sensitive_payload, slik_validations = await _build_slik_payload(
             session, org_id, data.period_start, data.period_end, settings or get_settings()
@@ -1214,6 +1228,7 @@ async def create_regulatory_run(
                     "report_type": "SLIK",
                     "template_code": template.code,
                     "template_version": template.version,
+                    "code_set_version": regulatory_policy.get("code_set_version"),
                     "period_start": data.period_start.isoformat(),
                     "period_end": data.period_end.isoformat(),
                     **payload,
@@ -1242,6 +1257,7 @@ async def create_regulatory_run(
             "report_type": template.report_type,
             "template_code": template.code,
             "template_version": template.version,
+            "code_set_version": regulatory_policy.get("code_set_version"),
             "period_start": data.period_start.isoformat(),
             "period_end": data.period_end.isoformat(),
             "portfolio": report.loan_portfolio,

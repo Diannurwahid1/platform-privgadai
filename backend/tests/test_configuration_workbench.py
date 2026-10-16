@@ -284,3 +284,43 @@ async def test_effective_product_and_workflow_policy_control_intake(db_session: 
     )
     assert application.sla_due_at is not None
     assert before + timedelta(hours=5, minutes=59) <= application.sla_due_at <= before + timedelta(hours=6, minutes=1)
+
+
+async def test_effective_authority_matrix_blocks_excess_approval(db_session: AsyncSession) -> None:
+    org, maker, checker, _scheduler = await _configuration_team(db_session)
+    policy = await configuration_service.create_configuration(
+        db_session,
+        org.id,
+        maker.id,
+        ConfigurationCreate(
+            domain="access",
+            config_key="authority-matrix",
+            effective_from=datetime.now(UTC) - timedelta(minutes=1),
+            payload={"authority_limits": {"ops_admin": 5000000}},
+            change_summary="Batasi nominal approval ops admin menjadi lima juta rupiah",
+        ),
+    )
+    await _approve(db_session, org, maker, checker, policy)
+    approval = await approval_service.request_approval(
+        db_session,
+        org_id=org.id,
+        branch_id=None,
+        aggregate_type="test_authority",
+        aggregate_id=uuid4(),
+        aggregate_reference="AUTH-LIMIT-001",
+        action="approve_high_value",
+        requested_by=maker.id,
+        assigned_role="ops_admin",
+        reason="Uji pembatasan kewenangan berdasarkan nominal",
+        payload={"amount": "7000000"},
+    )
+    with pytest.raises(HTTPException) as denied:
+        await approval_service.decide_approval(
+            db_session,
+            org.id,
+            approval.id,
+            checker.id,
+            "approved",
+            "Nominal sengaja melebihi batas untuk pengujian",
+        )
+    assert denied.value.status_code == 403

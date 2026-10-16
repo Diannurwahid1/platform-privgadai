@@ -250,4 +250,5 @@ Konfigurasi efektif belum boleh dianggap otomatis mengubah seluruh mesin operasi
 - [ ] CFG-101: configuration workbench terversi dan effective-dated.
   - Register, editor, preview diff, checksum, lifecycle event, approval, scheduled activation, supersede, dan rollback-as-new-version tersedia.
   - Resolver runtime dan schema domain tersedia. Intake product, pricing LTV/fee, payment allocation waterfall, submission SLA, serta approval SLA sudah membaca versi efektif.
-  - Binding appraisal/custody/regulatory/access dan managed activation scheduler masih dilanjutkan.
+  - Appraisal evidence matrix, custody dispatch evidence, regulator template/validator gate, dan authority limit sudah memakai resolver efektif.
+  - Managed activation scheduler dan domain integrasi tambahan masih dilanjutkan.

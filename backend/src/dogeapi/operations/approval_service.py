@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal, InvalidOperation
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -26,6 +27,7 @@ from dogeapi.models import (
     Incident,
     IncidentEvent,
     InventoryCheck,
+    LoanApplication,
     Membership,
     PaymentAdjustment,
     ReconciliationRun,
@@ -135,19 +137,76 @@ async def decide_approval(
     if item.requested_by_user_id == actor_id:
         raise HTTPException(status.HTTP_409_CONFLICT, "Maker tidak boleh menjadi checker untuk approval yang sama")
     delegation_id = await _ensure_checker_role(session, item, actor_id)
+    if decision == "approved":
+        access_policy = await get_effective_payload(session, org_id, "access", ["authority-matrix", "default"])
+        authority_limits = access_policy.get("authority_limits", {})
+        if isinstance(authority_limits, dict) and item.assigned_role in authority_limits:
+            try:
+                limit = Decimal(str(authority_limits[item.assigned_role]))
+            except (InvalidOperation, ValueError) as exc:
+                raise HTTPException(status.HTTP_409_CONFLICT, "Authority matrix configuration is invalid") from exc
+            amount_fields = (
+                "amount",
+                "principal_amount",
+                "recommended_loan",
+                "settlement_amount",
+                "variance_amount",
+                "actual_closing_balance",
+            )
+            exposure = max(
+                (
+                    abs(Decimal(str(item.payload_snapshot[field])))
+                    for field in amount_fields
+                    if item.payload_snapshot.get(field) is not None
+                ),
+                default=Decimal("0"),
+            )
+            if exposure > limit:
+                raise HTTPException(
+                    status.HTTP_403_FORBIDDEN,
+                    f"Nominal {exposure} melebihi authority limit peran {item.assigned_role}",
+                )
     if decision == "approved" and item.aggregate_type in {"appraisal", "incident"}:
-        clean_evidence_id = await session.scalar(
-            select(EvidenceFile.id).where(
-                EvidenceFile.org_id == org_id,
-                EvidenceFile.subject_type == item.aggregate_type,
-                EvidenceFile.subject_id == item.aggregate_id,
-                EvidenceFile.scan_status == "clean",
+        required_types: list[str] = []
+        if item.aggregate_type == "appraisal":
+            appraisal_context = (
+                await session.execute(
+                    select(HumanAppraisal, LoanApplication)
+                    .join(
+                        LoanApplication,
+                        (LoanApplication.id == HumanAppraisal.application_id) & (LoanApplication.org_id == org_id),
+                    )
+                    .where(HumanAppraisal.org_id == org_id, HumanAppraisal.id == item.aggregate_id)
+                )
+            ).one_or_none()
+            if appraisal_context is not None:
+                _, application = appraisal_context
+                appraisal_policy = await get_effective_payload(
+                    session, org_id, "appraisal", [application.asset_category, "default"]
+                )
+                configured_types = appraisal_policy.get("required_evidence_types", [])
+                if isinstance(configured_types, list):
+                    required_types = [str(value) for value in configured_types]
+        evidence_types = set(
+            await session.scalars(
+                select(EvidenceFile.evidence_type).where(
+                    EvidenceFile.org_id == org_id,
+                    EvidenceFile.subject_type == item.aggregate_type,
+                    EvidenceFile.subject_id == item.aggregate_id,
+                    EvidenceFile.scan_status == "clean",
+                )
             )
         )
-        if clean_evidence_id is None:
+        if not evidence_types:
             raise HTTPException(
                 status.HTTP_409_CONFLICT,
                 "Approval memerlukan sedikitnya satu evidence yang lulus malware scanning",
+            )
+        missing_types = sorted(set(required_types) - evidence_types)
+        if missing_types:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                f"Evidence appraisal wajib belum lengkap: {', '.join(missing_types)}",
             )
     previous = item.status
     item.status = decision

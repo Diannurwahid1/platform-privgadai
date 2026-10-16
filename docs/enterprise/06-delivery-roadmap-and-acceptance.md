@@ -99,7 +99,8 @@ Exit: transaksi uang mempunyai source event, balanced journal, receipt, dan reko
 - [ ] F6-05: configuration workbench versioned/effective-dated.
   - Control plane per tenant/domain/key, immutable version snapshot, checksum, preview perubahan, effective date, approval, scheduled activation, supersede, event history, dan rollback melalui versi baru sudah tersedia.
   - Schema registry dan effective-dated resolver tersedia; product intake, pricing, payment allocation, submission SLA, dan approval SLA sudah terikat ke versi efektif.
-  - Binding appraisal/custody/regulatory/access dan managed scheduler masih menjadi gate penutup.
+  - Appraisal evidence, custody dispatch evidence, regulator template/validator gate, dan authority limit sudah terikat ke versi efektif.
+  - Managed scheduler serta binding domain integrasi tambahan masih menjadi gate penutup.
 - [x] F6-06: privileged access, TOTP MFA/recovery, governed session/revoke, step-up, dan security event explorer.
 
 Exit: semua command P0 memiliki event, kontrol approval, dan konfigurasi terversi.

@@ -1099,16 +1099,25 @@ async def dispatch_custody_movement(
     await ensure_operational_access(
         session, org_id, actor_id, location.branch_id, {"ops_admin", "branch_manager", "custodian"}
     )
-    clean_evidence_id = await session.scalar(
-        select(EvidenceFile.id).where(
-            EvidenceFile.org_id == org_id,
-            EvidenceFile.subject_type == "custody_movement",
-            EvidenceFile.subject_id == item.id,
-            EvidenceFile.scan_status == "clean",
+    custody_policy = await get_effective_payload(session, org_id, "custody", ["movement-dispatch", "default"])
+    evidence_types = set(
+        await session.scalars(
+            select(EvidenceFile.evidence_type).where(
+                EvidenceFile.org_id == org_id,
+                EvidenceFile.subject_type == "custody_movement",
+                EvidenceFile.subject_id == item.id,
+                EvidenceFile.scan_status == "clean",
+            )
         )
     )
-    if clean_evidence_id is None:
+    if not evidence_types:
         raise _conflict("Dispatch requires handover evidence that passed malware scanning")
+    required_types = custody_policy.get("required_evidence_types", [])
+    missing_types = (
+        sorted({str(value) for value in required_types} - evidence_types) if isinstance(required_types, list) else []
+    )
+    if missing_types:
+        raise _conflict(f"Dispatch evidence wajib belum lengkap: {', '.join(missing_types)}")
     item.status = "in_transit"
     item.seal_out = seal
     item.dispatch_note = note

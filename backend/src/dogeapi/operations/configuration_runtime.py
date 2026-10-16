@@ -133,6 +133,13 @@ def validate_configuration_payload(domain: str, payload: dict[str, object]) -> d
         order = payload["payment_allocation_order"]
         if not isinstance(order, list) or set(order) != {"fee", "principal"} or len(order) != 2:
             raise _problem("payment_allocation_order harus memuat fee dan principal tepat satu kali")
+    if "authority_limits" in payload:
+        limits = payload["authority_limits"]
+        if not isinstance(limits, dict):
+            raise _problem("authority_limits harus berupa object role ke nominal")
+        for role, value in limits.items():
+            if not isinstance(role, str) or _decimal(value, f"authority_limits.{role}") < 0:
+                raise _problem("authority_limits harus memakai role dan nominal non-negatif")
     return payload
 
 
