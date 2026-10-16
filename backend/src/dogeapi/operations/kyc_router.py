@@ -56,9 +56,27 @@ async def kyc_verification_queue(session: SessionDep, org_id: OrgIdDep, user: Us
     ]
 
 
+@queue_router.get("/provider-capabilities")
+async def provider_capabilities(settings: SettingsDep) -> dict[str, object]:
+    return {
+        "ocr": {
+            "enabled": settings.KYC_OCR_PROVIDER != "disabled",
+            "provider": settings.KYC_OCR_PROVIDER,
+            "purpose": "extraction_only",
+        },
+        "identity_verification": {
+            "enabled": settings.KYC_IDV_MODE != "disabled",
+            "provider": "verihubs" if settings.KYC_IDV_MODE != "disabled" else "disabled",
+            "environment": "sandbox" if settings.KYC_IDV_MODE == "verihubs_sandbox" else "live"
+            if settings.KYC_IDV_MODE == "verihubs_live"
+            else "disabled",
+        },
+    }
+
+
 @router.get("/{customer_id}/kyc")
 async def get_customer_kyc(
-    customer_id: UUID, session: SessionDep, org_id: OrgIdDep, user: UserDep
+    customer_id: UUID, session: SessionDep, settings: SettingsDep, org_id: OrgIdDep, user: UserDep
 ) -> dict[str, object]:
     await mvp_service.ensure_customer_access(
         session,
@@ -67,7 +85,7 @@ async def get_customer_kyc(
         customer_id,
         {"ops_admin", "branch_manager", "loan_officer", "reviewer", "auditor"},
     )
-    return await kyc_service.serialize_customer_kyc(session, org_id, customer_id)
+    return await kyc_service.serialize_customer_kyc(session, org_id, customer_id, settings)
 
 
 @router.post(
@@ -141,13 +159,77 @@ async def upload_kyc_document(
     )
 
 
+@router.post(
+    "/{customer_id}/kyc/{verification_id}/provider/ocr",
+    dependencies=[Depends(require_scope("org:write"))],
+)
+async def run_kyc_ocr(
+    customer_id: UUID,
+    verification_id: UUID,
+    session: SessionDep,
+    settings: SettingsDep,
+    org_id: OrgIdDep,
+    user: UserDep,
+) -> dict[str, object]:
+    await mvp_service.ensure_customer_access(
+        session, org_id, user.id, customer_id, {"ops_admin", "branch_manager", "loan_officer", "reviewer"}
+    )
+    item = await kyc_service.run_ocr_check(
+        session, settings, org_id, user.id, customer_id, verification_id
+    )
+    await session.commit()
+    return {
+        "id": item.id,
+        "status": item.status,
+        "officially_verified": False,
+        "message": "OCR selesai. Hasil ekstraksi wajib dibandingkan oleh petugas.",
+    }
+
+
+@router.post(
+    "/{customer_id}/kyc/{verification_id}/provider/identity-verification",
+    dependencies=[Depends(require_scope("org:write"))],
+)
+async def run_kyc_identity_verification(
+    customer_id: UUID,
+    verification_id: UUID,
+    session: SessionDep,
+    settings: SettingsDep,
+    org_id: OrgIdDep,
+    user: UserDep,
+) -> dict[str, object]:
+    await mvp_service.ensure_customer_access(
+        session, org_id, user.id, customer_id, {"ops_admin", "branch_manager", "loan_officer", "reviewer"}
+    )
+    item = await kyc_service.run_identity_check(
+        session, settings, org_id, user.id, customer_id, verification_id
+    )
+    await session.commit()
+    label = "verifikasi live resmi" if item.officially_verified else "simulasi sandbox/provider evidence"
+    return {
+        "id": item.id,
+        "status": item.status,
+        "officially_verified": item.officially_verified,
+        "environment": item.environment,
+        "message": f"Identity check selesai sebagai {label}.",
+    }
+
+
 @router.post("/{customer_id}/kyc/{verification_id}/review", dependencies=[Depends(require_scope("org:write"))])
 async def review_customer_kyc(
-    customer_id: UUID, verification_id: UUID, data: KycReview, session: SessionDep, org_id: OrgIdDep, user: UserDep
+    customer_id: UUID,
+    verification_id: UUID,
+    data: KycReview,
+    session: SessionDep,
+    settings: SettingsDep,
+    org_id: OrgIdDep,
+    user: UserDep,
 ) -> dict[str, object]:
     await mvp_service.ensure_customer_access(
         session, org_id, user.id, customer_id, {"ops_admin", "branch_manager", "reviewer"}
     )
-    item = await kyc_service.review_verification(session, org_id, user.id, customer_id, verification_id, data)
+    item = await kyc_service.review_verification(
+        session, org_id, user.id, customer_id, verification_id, data, settings
+    )
     await session.commit()
     return {"id": item.id, "status": item.status, "message": "Keputusan KYC tercatat"}

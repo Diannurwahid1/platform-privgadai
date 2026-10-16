@@ -282,6 +282,19 @@ export type KycVerification = {
   decision_reason: string | null; initiated_by_user_id: string; reviewed_by_user_id: string | null;
   created_at: string; reviewed_at: string | null; expires_at: string | null;
   documents: Array<Record<string, unknown>>; events: Array<Record<string, unknown>>;
+  provider_checks: KycProviderCheck[];
+};
+
+export type KycProviderCheck = {
+  id: string; check_type: "ocr" | "identity_verification"; provider_name: string;
+  environment: "local" | "sandbox" | "live" | "provider"; status: string;
+  provider_reference: string | null; officially_verified: boolean;
+  result: Record<string, unknown>; requested_by_user_id: string; completed_at: string;
+};
+
+export type KycProviderCapabilities = {
+  ocr: { enabled: boolean; provider: string; purpose: "extraction_only" };
+  identity_verification: { enabled: boolean; provider: string; environment: "sandbox" | "live" | "disabled" };
 };
 
 export type CustomerKyc = { customer_id: string; current_status: string; verifications: KycVerification[] };
@@ -590,6 +603,7 @@ export const listCustomers = () => apiFetch<CustomerListItem[]>("/v1/customers")
 export const getCustomerDetail = (id: string) => apiFetch<CustomerDetail>(`/v1/customers/${id}`);
 export const getCustomerKyc = (id: string) => apiFetch<CustomerKyc>(`/v1/customers/${id}/kyc`);
 export const listKycVerifications = () => apiFetch<KycQueueItem[]>("/v1/kyc/verifications");
+export const getKycProviderCapabilities = () => apiFetch<KycProviderCapabilities>("/v1/kyc/provider-capabilities");
 export const startCustomerKyc = (id: string, json: Record<string, unknown>) =>
   apiFetch<{ id: string; status: string; message: string }>(`/v1/customers/${id}/kyc`, { method: "POST", json });
 export const uploadKycDocument = (customerId: string, verificationId: string, file: File, documentSide = "ktp_front") => {
@@ -598,6 +612,10 @@ export const uploadKycDocument = (customerId: string, verificationId: string, fi
 };
 export const reviewCustomerKyc = (customerId: string, verificationId: string, json: Record<string, unknown>) =>
   apiFetch<{ id: string; status: string; message: string }>(`/v1/customers/${customerId}/kyc/${verificationId}/review`, { method: "POST", json });
+export const runKycOcr = (customerId: string, verificationId: string) =>
+  apiFetch<{ id: string; status: string; officially_verified: boolean; message: string }>(`/v1/customers/${customerId}/kyc/${verificationId}/provider/ocr`, { method: "POST" });
+export const runKycIdentityVerification = (customerId: string, verificationId: string) =>
+  apiFetch<{ id: string; status: string; officially_verified: boolean; environment: string; message: string }>(`/v1/customers/${customerId}/kyc/${verificationId}/provider/identity-verification`, { method: "POST" });
 export const listApprovals = () => apiFetch<ApprovalQueueItem[]>("/v1/approvals");
 export const decideApproval = (id: string, decision: "approved" | "rejected", reason: string) =>
   apiFetch<{ id: string; status: string; message: string }>(`/v1/approvals/${id}/decision`, { method: "POST", json: { decision, reason } });

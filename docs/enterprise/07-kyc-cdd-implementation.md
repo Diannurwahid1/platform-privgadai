@@ -49,10 +49,12 @@ Kontrak adapter berikutnya mencakup correlation ID, versi provider, hasil match 
 - [x] Maker-checker dan alasan keputusan.
 - [x] Guard KYC sebelum appraisal.
 - [x] Event KYC pada Audit Explorer.
-- [ ] Adapter Dukcapil/provider e-KYC resmi.
-- [ ] OCR terkontrol dan perbandingan atribut.
+- [ ] Aktivasi adapter provider e-KYC resmi dengan kontrak dan kredensial live.
+  - Adapter Verihubs sandbox/live, pemisahan status simulasi, encrypted provider evidence, serta production guard sudah tersedia; aktivasi live masih membutuhkan kredensial dan persetujuan provider.
+- [x] OCR terkontrol dan perbandingan atribut.
+  - Adapter HTTP lokal dan Verihubs Extract KTP tersedia. OCR membandingkan NIK, nama, dan tanggal lahir tanpa mengubah data KYC secara otomatis.
 - [ ] Face match dan liveness provider.
 - [ ] Screening PEP, sanctions, adverse media, dan EDD case.
-- [ ] Malware scanner dan authorized evidence viewer.
+- [x] Malware scanner, karantina, dan authorized evidence metadata.
 - [ ] Pengkinian berkala, expiry job, serta ongoing monitoring.
 - [ ] Privacy request, retention, legal hold, dan purge workflow.

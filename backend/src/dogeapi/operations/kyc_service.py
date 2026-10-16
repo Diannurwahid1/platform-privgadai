@@ -6,6 +6,7 @@ import asyncio
 import base64
 import hashlib
 import hmac
+import json
 import secrets
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -17,9 +18,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dogeapi.file_security import scan_upload
-from dogeapi.models import Borrower, DebtorProfile, KycDocument, KycEvent, KycVerification
+from dogeapi.models import Borrower, DebtorProfile, KycDocument, KycEvent, KycProviderCheck, KycVerification
+from dogeapi.operations import kyc_provider
 from dogeapi.operations.kyc_schemas import KycCreate, KycReview
-from dogeapi.settings import Settings
+from dogeapi.settings import Settings, get_settings
 
 
 def _fingerprint_nik(settings: Settings, org_id: UUID, nik: str) -> str:
@@ -189,8 +191,172 @@ async def store_document(
     return item
 
 
+async def _verification(
+    session: AsyncSession, org_id: UUID, borrower_id: UUID, verification_id: UUID
+) -> KycVerification:
+    item = await session.scalar(
+        select(KycVerification).where(
+            KycVerification.org_id == org_id,
+            KycVerification.id == verification_id,
+            KycVerification.borrower_id == borrower_id,
+        )
+    )
+    if item is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Verifikasi KYC tidak ditemukan")
+    return item
+
+
+async def _ktp_document(
+    session: AsyncSession, org_id: UUID, verification_id: UUID
+) -> KycDocument:
+    item = await session.scalar(
+        select(KycDocument)
+        .where(
+            KycDocument.org_id == org_id,
+            KycDocument.verification_id == verification_id,
+            KycDocument.document_side == "ktp_front",
+        )
+        .order_by(KycDocument.created_at.desc())
+    )
+    if item is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Foto sisi depan KTP wajib tersedia")
+    if item.scan_status != "clean":
+        raise HTTPException(status.HTTP_409_CONFLICT, "Foto KTP belum lulus malware scanning")
+    return item
+
+
+async def _document_bytes(settings: Settings, document: KycDocument) -> bytes:
+    storage_root = Path(__file__).resolve().parents[3] / ".data" / "kyc"
+    target = (storage_root / document.object_key).resolve()
+    if storage_root.resolve() not in target.parents or not target.is_file():
+        raise HTTPException(status.HTTP_409_CONFLICT, "Berkas KTP terenkripsi tidak tersedia")
+    encrypted = await asyncio.to_thread(target.read_bytes)
+    try:
+        return _fernet(settings).decrypt(encrypted)
+    except Exception as exc:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Berkas KTP tidak dapat didekripsi") from exc
+
+
+def _normalized(value: object) -> str:
+    return "".join(character for character in str(value or "").upper() if character.isalnum())
+
+
+def _ocr_comparison(verification: KycVerification, nik: str, payload: dict[str, object]) -> dict[str, bool | None]:
+    extracted_nik = payload.get("nik")
+    extracted_name = payload.get("full_name") or payload.get("nama")
+    extracted_birth = payload.get("date_of_birth") or payload.get("tanggal_lahir")
+    return {
+        "nik": _normalized(extracted_nik) == _normalized(nik) if extracted_nik else None,
+        "legal_name": _normalized(extracted_name) == _normalized(verification.legal_name) if extracted_name else None,
+        "birth_date": (
+            _normalized(extracted_birth)
+            in {_normalized(verification.birth_date.isoformat()), _normalized(verification.birth_date.strftime("%d-%m-%Y"))}
+            if extracted_birth
+            else None
+        ),
+    }
+
+
+async def _record_provider_check(
+    session: AsyncSession,
+    settings: Settings,
+    verification: KycVerification,
+    actor_id: UUID,
+    check_type: str,
+    request_fingerprint: str,
+    result: kyc_provider.ProviderResult,
+    payload: dict[str, object],
+) -> KycProviderCheck:
+    item = KycProviderCheck(
+        org_id=verification.org_id,
+        verification_id=verification.id,
+        requested_by_user_id=actor_id,
+        check_type=check_type,
+        provider_name=result.provider_name,
+        environment=result.environment,
+        status=result.status,
+        provider_reference=result.reference,
+        request_fingerprint=request_fingerprint,
+        response_ciphertext=encrypt_pii(settings, json.dumps(payload, ensure_ascii=False, default=str)),
+        officially_verified=result.officially_verified,
+        completed_at=datetime.now(UTC),
+    )
+    session.add(item)
+    verification.provider_name = result.provider_name
+    verification.provider_reference = result.reference
+    session.add(
+        KycEvent(
+            org_id=verification.org_id,
+            verification_id=verification.id,
+            actor_user_id=actor_id,
+            event_type="KycOcrCompleted" if check_type == "ocr" else "KycIdentityProviderCompleted",
+            from_status=verification.status,
+            to_status=verification.status,
+            reason=(
+                f"{result.provider_name}/{result.environment}: {result.status}; "
+                f"officially_verified={result.officially_verified}"
+            ),
+        )
+    )
+    await session.flush()
+    return item
+
+
+async def run_ocr_check(
+    session: AsyncSession,
+    settings: Settings,
+    org_id: UUID,
+    actor_id: UUID,
+    borrower_id: UUID,
+    verification_id: UUID,
+) -> KycProviderCheck:
+    verification = await _verification(session, org_id, borrower_id, verification_id)
+    document = await _ktp_document(session, org_id, verification.id)
+    content = await _document_bytes(settings, document)
+    result = await kyc_provider.run_ocr(settings, content, document.content_type, document.file_name)
+    nik = decrypt_pii(settings, verification.national_id_ciphertext or "")
+    payload = dict(result.payload)
+    payload["field_matches"] = _ocr_comparison(verification, nik, payload)
+    return await _record_provider_check(
+        session, settings, verification, actor_id, "ocr", document.sha256, result, payload
+    )
+
+
+async def run_identity_check(
+    session: AsyncSession,
+    settings: Settings,
+    org_id: UUID,
+    actor_id: UUID,
+    borrower_id: UUID,
+    verification_id: UUID,
+) -> KycProviderCheck:
+    verification = await _verification(session, org_id, borrower_id, verification_id)
+    await _ktp_document(session, org_id, verification.id)
+    nik = decrypt_pii(settings, verification.national_id_ciphertext or "")
+    reference_id = f"KYC-{str(verification.id).replace('-', '')[:24]}"
+    result = await kyc_provider.run_identity_verification(
+        settings,
+        nik=nik,
+        legal_name=verification.legal_name,
+        birth_date=verification.birth_date.strftime("%d-%m-%Y"),
+        reference_id=reference_id,
+    )
+    fingerprint = hashlib.sha256(
+        f"{verification.nik_fingerprint}:{verification.legal_name}:{verification.birth_date}".encode()
+    ).hexdigest()
+    return await _record_provider_check(
+        session, settings, verification, actor_id, "identity_verification", fingerprint, result, result.payload
+    )
+
+
 async def review_verification(
-    session: AsyncSession, org_id: UUID, actor_id: UUID, borrower_id: UUID, verification_id: UUID, data: KycReview
+    session: AsyncSession,
+    org_id: UUID,
+    actor_id: UUID,
+    borrower_id: UUID,
+    verification_id: UUID,
+    data: KycReview,
+    settings: Settings | None = None,
 ) -> KycVerification:
     item = await session.scalar(
         select(KycVerification).where(
@@ -221,6 +387,21 @@ async def review_verification(
             raise HTTPException(status.HTTP_409_CONFLICT, "Foto KTP belum lulus malware scanning")
         if data.sanctions_match:
             raise HTTPException(status.HTTP_409_CONFLICT, "Sanctions match memerlukan eskalasi EDD sebelum verifikasi")
+        if item.verification_method == "electronic_provider":
+            provider_check = await session.scalar(
+                select(KycProviderCheck)
+                .where(
+                    KycProviderCheck.org_id == org_id,
+                    KycProviderCheck.verification_id == item.id,
+                    KycProviderCheck.check_type == "identity_verification",
+                )
+                .order_by(KycProviderCheck.completed_at.desc())
+            )
+            if provider_check is None or provider_check.status == "not_matched":
+                raise HTTPException(status.HTTP_409_CONFLICT, "Identity provider check yang sesuai wajib tersedia")
+            active_settings = settings or get_settings()
+            if active_settings.KYC_REQUIRE_LIVE_IDV_FOR_ELECTRONIC and not provider_check.officially_verified:
+                raise HTTPException(status.HTTP_409_CONFLICT, "Verifikasi elektronik memerlukan hasil live resmi")
 
     previous = item.status
     item.status = data.decision
@@ -249,8 +430,11 @@ async def review_verification(
     return item
 
 
-async def serialize_customer_kyc(session: AsyncSession, org_id: UUID, borrower_id: UUID) -> dict[str, object]:
+async def serialize_customer_kyc(
+    session: AsyncSession, org_id: UUID, borrower_id: UUID, settings: Settings | None = None
+) -> dict[str, object]:
     await _borrower(session, org_id, borrower_id)
+    active_settings = settings or get_settings()
     rows = list(
         await session.scalars(
             select(KycVerification)
@@ -274,6 +458,35 @@ async def serialize_customer_kyc(session: AsyncSession, org_id: UUID, borrower_i
                 .order_by(KycEvent.occurred_at.desc())
             )
         )
+        provider_checks = list(
+            await session.scalars(
+                select(KycProviderCheck)
+                .where(KycProviderCheck.org_id == org_id, KycProviderCheck.verification_id == item.id)
+                .order_by(KycProviderCheck.completed_at.desc())
+            )
+        )
+        serialized_checks: list[dict[str, object]] = []
+        for check in provider_checks:
+            try:
+                payload = json.loads(decrypt_pii(active_settings, check.response_ciphertext))
+            except Exception:
+                payload = {"message": "Hasil provider tidak dapat dibaca"}
+            if isinstance(payload, dict) and payload.get("nik"):
+                payload["nik"] = _masked_nik(str(payload["nik"]))
+            serialized_checks.append(
+                {
+                    "id": check.id,
+                    "check_type": check.check_type,
+                    "provider_name": check.provider_name,
+                    "environment": check.environment,
+                    "status": check.status,
+                    "provider_reference": check.provider_reference,
+                    "officially_verified": check.officially_verified,
+                    "result": payload,
+                    "requested_by_user_id": check.requested_by_user_id,
+                    "completed_at": check.completed_at,
+                }
+            )
         result.append(
             {
                 "id": item.id,
@@ -331,6 +544,7 @@ async def serialize_customer_kyc(session: AsyncSession, org_id: UUID, borrower_i
                     }
                     for event in events
                 ],
+                "provider_checks": serialized_checks,
             }
         )
     return {

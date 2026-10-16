@@ -134,3 +134,34 @@ class KycEvent(UUIDPrimaryKeyMixin, Base):
     occurred_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
     )
+
+
+class KycProviderCheck(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Immutable evidence of an OCR or identity-provider call."""
+
+    __tablename__ = "kyc_provider_checks"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["org_id", "verification_id"],
+            ["kyc_verifications.org_id", "kyc_verifications.id"],
+            name="fk_kyc_provider_check_org_verification",
+            ondelete="CASCADE",
+        ),
+    )
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    verification_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False, index=True)
+    requested_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    check_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    provider_name: Mapped[str] = mapped_column(String(80), nullable=False)
+    environment: Mapped[str] = mapped_column(String(16), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    provider_reference: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    response_ciphertext: Mapped[str] = mapped_column(Text(), nullable=False)
+    officially_verified: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=False, server_default="false")
+    completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

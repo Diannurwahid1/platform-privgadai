@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dogeapi.models import Borrower, User
-from dogeapi.operations import kyc_service
+from dogeapi.operations import kyc_provider, kyc_service
 from dogeapi.operations.kyc_schemas import KycCreate, KycReview
 from dogeapi.settings import Settings
 
@@ -19,7 +19,7 @@ pytestmark = pytest.mark.integration
 
 
 async def test_ktp_kyc_masks_nik_encrypts_document_and_enforces_checker(
-    client: AsyncClient, db_session: AsyncSession, settings: Settings
+    client: AsyncClient, db_session: AsyncSession, settings: Settings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     registered = await client.post(
         "/auth/register",
@@ -77,6 +77,34 @@ async def test_ktp_kyc_masks_nik_encrypts_document_and_enforces_checker(
     assert document.sha256 != "synthetic-image-content"
     assert document.scan_status == "clean"
     assert document.scanner_engine == "content-guard-v1"
+
+    async def fake_ocr(
+        _settings: Settings, _content: bytes, _content_type: str, _file_name: str
+    ) -> kyc_provider.ProviderResult:
+        return kyc_provider.ProviderResult(
+            provider_name="local_http",
+            environment="local",
+            status="completed",
+            reference="ocr-test-001",
+            payload={"nik": "3273010101900001", "nama": "BUDI SANTOSO", "confidence": 0.98},
+        )
+
+    monkeypatch.setattr(kyc_provider, "run_ocr", fake_ocr)
+    provider_check = await kyc_service.run_ocr_check(
+        db_session, settings, verification.org_id, maker.id, borrower.id, verification.id
+    )
+    assert provider_check.officially_verified is False
+    assert "3273010101900001" not in provider_check.response_ciphertext
+    serialized = await kyc_service.serialize_customer_kyc(
+        db_session, verification.org_id, borrower.id, settings
+    )
+    provider_result = serialized["verifications"][0]["provider_checks"][0]  # type: ignore[index]
+    assert provider_result["result"]["nik"] == "327301••••••0001"  # type: ignore[index]
+    assert provider_result["result"]["field_matches"] == {  # type: ignore[index]
+        "nik": True,
+        "legal_name": True,
+        "birth_date": None,
+    }
 
     with pytest.raises(Exception) as maker_error:
         await kyc_service.review_verification(
