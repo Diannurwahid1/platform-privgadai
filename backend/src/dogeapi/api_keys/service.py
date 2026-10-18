@@ -40,11 +40,14 @@ def _generate_key() -> tuple[str, str, str]:
 
 def parse_key(plaintext: str) -> tuple[str, str] | None:
     """Return ``(prefix, key_hash)`` if the format looks right, else ``None``."""
-    parts = plaintext.split("_", 2)
-    if len(parts) != 3 or parts[0] != KEY_BRAND:
+    marker = f"{KEY_BRAND}_"
+    if not plaintext.startswith(marker):
         return None
-    prefix = parts[1]
-    if not prefix:
+    # URL-safe base64 can itself contain underscores. The generated prefix is
+    # always eight characters, so the separator must be read by position.
+    prefix = plaintext[len(marker) : len(marker) + 8]
+    separator = len(marker) + 8
+    if len(prefix) != 8 or plaintext[separator : separator + 1] != "_" or not plaintext[separator + 1 :]:
         return None
     key_hash = hashlib.sha256(plaintext.encode("utf-8")).hexdigest()
     return prefix, key_hash

@@ -67,7 +67,7 @@ export default function LoginPage() {
     >
       <Card>
         <CardHeader>
-          <CardTitle>Masuk ke PrivGadai</CardTitle>
+          <CardTitle>Masuk sebagai petugas</CardTitle>
           <CardDescription>
             Lanjutkan setup tenant atau pekerjaan operasional cabang Anda.
           </CardDescription>
@@ -131,6 +131,9 @@ export default function LoginPage() {
           Lupa kata sandi?
         </Link>
       </p>
+      <Link href="/borrower" className="mt-5 flex min-h-12 items-center justify-center rounded-xl border border-primary/30 bg-surface-blue px-4 text-sm font-bold text-primary hover:bg-primary/10">
+        Nasabah? Buka portal borrower →
+      </Link>
     </motion.div>
   );
 }

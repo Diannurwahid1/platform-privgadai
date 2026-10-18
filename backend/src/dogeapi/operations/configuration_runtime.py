@@ -67,7 +67,7 @@ _ALLOWED_FIELDS: dict[str, set[str]] = {
 
 
 def _problem(message: str) -> HTTPException:
-    return HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, message)
+    return HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, message)
 
 
 def _decimal(value: object, field: str) -> Decimal:

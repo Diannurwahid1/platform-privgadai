@@ -23,6 +23,11 @@ PrivGadai saat ini adalah **MVP internal/pilot**. Fondasi tenant, cabang, alur p
 8. [Approval control dan separation of duty](./08-approval-control-implementation.md)
 9. [Production readiness dan runbook operasi](./09-production-readiness.md)
 10. [Integrasi KYC PaddleOCR](./10-kyc-paddleocr-integration.md)
+11. [Gap blueprint: borrower, AI appraisal, dan penyedia pendanaan](./11-blueprint-gap-borrower-ai-funding.md)
+12. [Rencana implementasi portal nasabah, AI, dan pendana](./12-plan-borrower-ai-provider-experience.md)
+13. [Aset dan prompt maskot](./13-mascot-asset.md)
+14. [Status implementasi borrower dan AI appraisal](./14-borrower-ai-delivery.md)
+15. [Riset harga langsung dan kurasi sumber untuk appraisal](./15-live-market-research.md)
 
 ## Prinsip keputusan
 

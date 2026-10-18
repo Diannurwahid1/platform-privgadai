@@ -33,6 +33,7 @@ def rate_limited_settings() -> Iterator[Settings]:
         DATABASE_URL=TEST_DB_URL_ASYNC,
         DATABASE_URL_SYNC=TEST_DB_URL_SYNC,
         REDIS_URL=TEST_REDIS_URL,
+        TOKEN_STORE_BACKEND="redis",
         FEATURE_API_KEYS=False,
         FEATURE_AUDIT_LOG=False,
         FEATURE_RATE_LIMITING=True,
@@ -46,20 +47,20 @@ def rate_limited_settings() -> Iterator[Settings]:
 async def rl_client(
     rate_limited_settings: Settings,
     db_session: AsyncSession,
-    redis_client: Redis,
+    legacy_redis: Redis,
 ) -> AsyncIterator[AsyncClient]:
     app = create_app(settings=rate_limited_settings)
-    app.state.redis = redis_client
+    app.state.redis = legacy_redis
 
     from dogeapi.auth.security import build_authx
 
-    app.state.authx = build_authx(rate_limited_settings, redis=redis_client)
+    app.state.authx = build_authx(rate_limited_settings, redis=legacy_redis)
 
     async def _override_session() -> AsyncIterator[AsyncSession]:
         yield db_session
 
     async def _override_redis() -> AsyncIterator[Redis]:
-        yield redis_client
+        yield legacy_redis
 
     app.dependency_overrides[get_session] = _override_session
     app.dependency_overrides[get_redis] = _override_redis

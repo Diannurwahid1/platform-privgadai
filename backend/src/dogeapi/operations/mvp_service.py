@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from dogeapi.file_security import scan_upload
 from dogeapi.models import (
+    AiAppraisalEstimate,
     ApplicationStatusHistory,
     Asset,
     AssetCategory,
@@ -200,7 +201,12 @@ async def create_staff_assignment(
 
 
 async def create_application(
-    session: AsyncSession, org_id: UUID, actor_id: UUID | None, data: ApplicationCreate
+    session: AsyncSession,
+    org_id: UUID,
+    actor_id: UUID | None,
+    data: ApplicationCreate,
+    *,
+    borrower_id: UUID | None = None,
 ) -> LoanApplication:
     branch = await session.scalar(select(Branch).where(Branch.id == data.branch_id, Branch.org_id == org_id))
     product = await session.scalar(
@@ -232,21 +238,26 @@ async def create_application(
     max_amount = Decimal(str(product_policy.get("max_amount", product.max_amount)))
     allowed_tenors = product_policy.get("allowed_tenors_days", product.allowed_tenors_days)
     if not min_amount <= data.requested_amount <= max_amount:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Requested amount is outside product limits")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Requested amount is outside product limits")
     if data.requested_tenor_days not in allowed_tenors:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Tenor is not allowed by this product")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Tenor is not allowed by this product")
 
     stamp = datetime.now(UTC).strftime("%y%m%d")
     suffix = secrets.token_hex(3).upper()
-    borrower = Borrower(
-        org_id=org_id,
-        customer_reference=data.borrower.customer_reference or f"CUS-{stamp}-{suffix}",
-        full_name=data.borrower.full_name,
-        phone_masked=_mask_phone(data.borrower.phone),
-    )
-    session.add(borrower)
-    await session.flush()
-    session.add(DebtorProfile(org_id=org_id, borrower_id=borrower.id))
+    if borrower_id is None:
+        borrower = Borrower(
+            org_id=org_id,
+            customer_reference=data.borrower.customer_reference or f"CUS-{stamp}-{suffix}",
+            full_name=data.borrower.full_name,
+            phone_masked=_mask_phone(data.borrower.phone),
+        )
+        session.add(borrower)
+        await session.flush()
+        session.add(DebtorProfile(org_id=org_id, borrower_id=borrower.id))
+    else:
+        borrower = await session.scalar(select(Borrower).where(Borrower.org_id == org_id, Borrower.id == borrower_id))
+        if borrower is None:
+            raise _not_found("Borrower")
 
     initial_status = "submitted" if data.submit else "draft"
     now = datetime.now(UTC)
@@ -630,11 +641,11 @@ async def _resolve_evidence_subject(
     }
     if subject_type == "application":
         if subject_id != application.id:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Subject application does not match path")
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Subject application does not match path")
         return application, subject_id
     model = model_map.get(subject_type)
     if model is None:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Unsupported evidence subject")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Unsupported evidence subject")
     subject = await session.scalar(
         select(model).where(model.org_id == org_id, model.id == subject_id, model.application_id == application.id)
     )
@@ -716,7 +727,7 @@ async def create_appraisal(
         raise _conflict("Application must be in appraisal status")
     if data.liquidation_value > data.market_value or data.recommended_loan > data.liquidation_value:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             "Recommended loan must not exceed liquidation value and liquidation value must not exceed market value",
         )
     revision = (
@@ -794,17 +805,23 @@ async def create_offer(session: AsyncSession, org_id: UUID, actor_id: UUID, data
     service_fee_percent = Decimal(str(pricing_policy.get("service_fee_percent", product.service_fee_percent)))
     max_by_ltv = appraisal.liquidation_value * max_ltv_percent / Decimal("100")
     if data.principal_amount > min(appraisal.recommended_loan, max_by_ltv):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Offer exceeds appraisal or product LTV limit")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Offer exceeds appraisal or product LTV limit")
     if data.tenor_days not in product.allowed_tenors_days:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Offer tenor is not allowed by product")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Offer tenor is not allowed by product")
+    changed = data.principal_amount != application.requested_amount or data.tenor_days != application.requested_tenor_days
+    if changed and (not data.decision_reason or len(data.decision_reason.strip()) < 10):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "Alasan minimal 10 karakter wajib ketika nilai atau tenor penawaran berubah",
+        )
     expected_fee = (data.principal_amount * service_fee_percent / Decimal("100")).quantize(Decimal("0.01"))
     if data.service_fee_amount != expected_fee:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             "Service fee does not match the effective pricing configuration",
         )
     if data.expires_at <= datetime.now(UTC):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Offer expiry must be in the future")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Offer expiry must be in the future")
     version = (
         int(
             (
@@ -827,26 +844,38 @@ async def create_offer(session: AsyncSession, org_id: UUID, actor_id: UUID, data
     )
     session.add(item)
     await session.flush()
-    await transition_application(session, org_id, actor_id, application.id, "offered", "Human-approved offer issued")
+    detail = (
+        f"Penawaran Rp {data.principal_amount:,.0f} / {data.tenor_days} hari; "
+        f"perubahan dari Rp {application.requested_amount:,.0f} / {application.requested_tenor_days} hari. "
+        f"Alasan: {data.decision_reason or 'Sesuai permintaan dan appraisal final'}"
+    )
+    await transition_application(session, org_id, actor_id, application.id, "offered", detail[:1000])
     return item
 
 
 async def accept_offer(
-    session: AsyncSession, org_id: UUID, actor_id: UUID, offer_id: UUID, channel: str, ip_address: str | None
+    session: AsyncSession, org_id: UUID, actor_id: UUID | None, offer_id: UUID, channel: str, ip_address: str | None,
+    *, borrower_id: UUID | None = None,
 ) -> LoanAccount:
     row = (
         await session.execute(
             select(Offer, LoanApplication)
             .join(LoanApplication, LoanApplication.id == Offer.application_id)
             .where(Offer.id == offer_id, Offer.org_id == org_id, LoanApplication.org_id == org_id)
+            .with_for_update()
         )
     ).one_or_none()
     if row is None:
         raise _not_found("Offer")
     offer, application = row
-    await ensure_operational_access(
-        session, org_id, actor_id, application.branch_id, {"ops_admin", "branch_manager", "loan_officer", "reviewer"}
-    )
+    if borrower_id is None:
+        if actor_id is None:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Actor required")
+        await ensure_operational_access(
+            session, org_id, actor_id, application.branch_id, {"ops_admin", "branch_manager", "loan_officer", "reviewer"}
+        )
+    elif application.borrower_id != borrower_id:
+        raise _not_found("Offer")
     if offer.status != "offered" or application.status != "offered":
         raise _conflict("Offer is no longer available")
     if offer.expires_at <= datetime.now(UTC):
@@ -884,7 +913,15 @@ async def accept_offer(
         document_version=offer.agreement_version,
     )
     session.add_all([account, agreement])
-    await transition_application(session, org_id, actor_id, application.id, "accepted", "Offer accepted by customer")
+    if borrower_id is None:
+        await transition_application(session, org_id, actor_id, application.id, "accepted", "Offer accepted by customer")
+    else:
+        application.status = "accepted"
+        application.revision += 1
+        session.add(ApplicationStatusHistory(
+            org_id=org_id, application_id=application.id, actor_user_id=None,
+            from_status="offered", to_status="accepted", note="Penawaran diterima borrower melalui portal",
+        ))
     session.add(
         CollateralEvent(
             org_id=org_id,
@@ -1280,7 +1317,7 @@ async def verify_settlement(
     if not can_transition(LOAN_TRANSITIONS, account.status, "settled"):
         raise _conflict(f"Cannot settle loan in {account.status} status")
     if data.settlement_type == "repayment" and data.amount != account.outstanding_principal + account.outstanding_fee:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Repayment amount must equal total due")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Repayment amount must equal total due")
     if data.settlement_type == "repayment":
         from dogeapi.operations import payment_service
         from dogeapi.operations.payment_schemas import PaymentCreate
@@ -1486,6 +1523,11 @@ async def get_application_detail(
     product = await session.scalar(
         select(LoanProduct).where(LoanProduct.id == application.product_id, LoanProduct.org_id == org_id)
     )
+    ai_estimate = await session.scalar(
+        select(AiAppraisalEstimate).where(
+            AiAppraisalEstimate.org_id == org_id, AiAppraisalEstimate.application_id == application.id
+        )
+    )
     evidence = list(
         await session.scalars(
             select(EvidenceFile).where(EvidenceFile.org_id == org_id, EvidenceFile.application_id == application.id)
@@ -1527,7 +1569,10 @@ async def get_application_detail(
         status=application.status,
         priority=application.priority,
         branch={"id": branch.id, "code": branch.code, "name": branch.name} if branch else {},
-        product={"id": product.id, "code": product.code, "name": product.name} if product else None,
+        product={"id": product.id, "code": product.code, "name": product.name,
+                 "allowed_tenors_days": product.allowed_tenors_days,
+                 "service_fee_percent": product.service_fee_percent,
+                 "max_ltv_percent": product.max_ltv_percent} if product else None,
         borrower={
             "id": borrower.id,
             "customer_reference": borrower.customer_reference,
@@ -1548,6 +1593,16 @@ async def get_application_detail(
             "indicative_value": asset.indicative_value,
             "collateral_status": asset.collateral_status,
         },
+        ai_estimate={
+            "id": ai_estimate.id, "status": ai_estimate.status,
+            "low_value": ai_estimate.low_value, "high_value": ai_estimate.high_value,
+            "confidence": ai_estimate.confidence, "quality_score": ai_estimate.quality_score,
+            "quality_findings": ai_estimate.quality_findings, "vision_result": ai_estimate.vision_result,
+            "asset_description": ai_estimate.asset_description,
+            "research_result": ai_estimate.research_result,
+            "vision_status": ai_estimate.vision_status, "comparable_count": ai_estimate.comparable_count,
+            "explanation": ai_estimate.explanation, "model_name": ai_estimate.model_name,
+        } if ai_estimate else None,
         requested_amount=application.requested_amount,
         requested_tenor_days=application.requested_tenor_days,
         purpose=application.purpose,
@@ -1573,6 +1628,7 @@ async def get_application_detail(
                 "market_value": item.market_value,
                 "liquidation_value": item.liquidation_value,
                 "recommended_loan": item.recommended_loan,
+                "status": item.status,
                 "condition_grade": item.condition_grade,
                 "rationale": item.rationale,
             }
@@ -1585,6 +1641,8 @@ async def get_application_detail(
                 "principal_amount": item.principal_amount,
                 "tenor_days": item.tenor_days,
                 "total_due_amount": item.total_due_amount,
+                "service_fee_amount": item.service_fee_amount,
+                "decision_reason": item.decision_reason,
                 "expires_at": item.expires_at,
                 "status": item.status,
             }

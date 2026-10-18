@@ -196,7 +196,7 @@ async def triage_incident(
         select(Membership).where(Membership.org_id == org_id, Membership.user_id == data.assigned_to_user_id)
     )
     if assignee is None:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Owner incident bukan anggota tenant aktif")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Owner incident bukan anggota tenant aktif")
     previous = item.status
     item.status = "investigating"
     item.assigned_to_user_id = data.assigned_to_user_id

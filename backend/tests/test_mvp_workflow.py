@@ -12,8 +12,10 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from dogeapi.auth.passwords import hash_password
 from dogeapi.models import (
     ApprovalRequest,
+    BorrowerAccount,
     DebtorProfile,
     KycVerification,
     LoanApplication,
@@ -303,6 +305,19 @@ async def test_complete_mvp_workflow_is_tenant_scoped(
     approvals = await client.get("/v1/approvals", headers=headers)
     assert approvals.status_code == 200, approvals.text
     assert approvals.json()[0]["status"] == "approved"
+    missing_change_reason = await client.post(
+        "/v1/offers",
+        json={
+            "application_id": application_id,
+            "principal_amount": "6000000",
+            "tenor_days": 30,
+            "service_fee_amount": "300000",
+            "expires_at": (datetime.now(UTC) + timedelta(days=2)).isoformat(),
+            "agreement_version": "AGR-2026.1",
+        },
+        headers=headers,
+    )
+    assert missing_change_reason.status_code == 422
     offer = await client.post(
         "/v1/offers",
         json={
@@ -318,10 +333,25 @@ async def test_complete_mvp_workflow_is_tenant_scoped(
     assert offer.status_code == 201, offer.text
     detail = await client.get(f"/v1/applications/{application_id}", headers=headers)
     assert detail.status_code == 200
-    offer_id = detail.json()["offers"][0]["id"]
+    assert detail.json()["offers"][0]["status"] == "offered"
 
+    settings.BORROWER_ORG_SLUG = "mitra-mvp"
+    db_session.add(BorrowerAccount(
+        org_id=application.org_id, borrower_id=application.borrower_id,
+        email="borrower-mvp@example.com", phone_ciphertext=encrypt_pii(settings, "081234567890"),
+        password_hash=hash_password("borrower-test-password"),
+    ))
+    await db_session.flush()
+    borrower_login = await client.post(
+        "/borrower/v1/login", json={"email": "borrower-mvp@example.com", "password": "borrower-test-password"}
+    )
+    assert borrower_login.status_code == 200, borrower_login.text
+    borrower_detail = await client.get(f"/borrower/v1/applications/{application_id}")
+    assert borrower_detail.status_code == 200, borrower_detail.text
+    assert borrower_detail.json()["offer"]["principal_amount"] == "7000000.00"
     accepted = await client.post(
-        f"/v1/offers/{offer_id}/accept", json={"channel": "web", "ip_address": "127.0.0.1"}, headers=headers
+        f"/borrower/v1/applications/{application_id}/accept-offer",
+        headers={"X-Borrower-CSRF": client.cookies.get("pg_borrower_csrf") or ""},
     )
     assert accepted.status_code == 200, accepted.text
     pickup = await client.post(

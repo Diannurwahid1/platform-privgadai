@@ -1,65 +1,25 @@
-# Backend
+# Backend PrivGadai
 
-FastAPI backend for the PrivGadai multi-tenant MVP, adapted from the AI Template foundation.
+FastAPI, PostgreSQL, SQLAlchemy, dan Alembic untuk operasi mitra serta portal borrower. Baca [README utama](../README.md) untuk persiapan database, frontend, OCR, dan deployment.
 
-## Quick start
+## Lokal
 
-```bash
-python -m uv sync --frozen --python 3.12
-copy ..\.env.example ..\.env
-.\.venv\Scripts\python.exe -m alembic upgrade head
-.\.venv\Scripts\python.exe scripts\seed_privgadai_demo.py
-.\.venv\Scripts\python.exe -m uvicorn dogeapi.main:app --reload
+Siapkan `.env` di akar repository dari `.env.example`; isi URL database, secret, dan `BORROWER_ORG_SLUG`. Dari direktori `backend/`:
+
+```powershell
+uv sync --frozen --python 3.12
+uv run alembic upgrade head
+uv run uvicorn dogeapi.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Visit `http://localhost:8000/docs` for the OpenAPI UI. Use `/healthz` for
-liveness and `/readyz` for deployment readiness checks against PostgreSQL and
-the PostgreSQL token store. Redis-dependent template features remain disabled
-in the local MVP.
+Setelah organisasi dibuat melalui frontend, `uv run python scripts/seed_privgadai_demo.py --org <slug>` dapat mengisi data sintetis untuk development. Skrip ini tidak untuk produksi.
 
-## Development
+## Pemeriksaan
 
-```bash
-uv run pytest                    # run tests
-uv run ruff check .              # lint
-uv run ruff format .             # format
-uv run mypy src                  # type-check
-uv run alembic revision --autogenerate -m "description"
-uv run dogeapi admin create --email admin@example.com --password change-me-admin-password
+```powershell
+uv run pytest
+uv run ruff check .
+uv run mypy src
 ```
 
-The admin bootstrap command is idempotent: it creates the user if missing, or
-promotes and verifies the existing user. Pass `--update-password` when you want
-to rotate an existing admin password.
-
-## Architecture
-
-See the root [README](../README.md) and the plan document.
-
-Each feature module under `src/dogeapi/` is wired into `main.py` only when
-its `FEATURE_*` env var is `true`. Optional Python dependencies live behind
-`pyproject.toml` extras (`email`, `oauth`, `ai`, `stripe`, `logfire`).
-
-Production settings fail fast when placeholder secrets, insecure cookies, or
-enabled integrations without required secrets are detected.
-
-```
-src/dogeapi/
-├── main.py            # app factory; conditional router include
-├── settings.py        # FEATURE_* flags + secrets
-├── deps.py            # FastAPI deps (db, redis, auth, current_user, current_org)
-├── auth/              # authx wiring + register/login/refresh/logout
-├── organizations/     # orgs, memberships, invitations, RBAC
-├── operations/        # PrivGadai master data, workflow, public intake
-├── api_keys/          # X-API-Key auth (optional)
-├── audit_log/         # mutation logging (optional)
-├── rate_limit/        # authx RateLimiter + Redis (optional)
-├── oauth/             # Authlib Google/GitHub (optional)
-├── magic_link/        # passwordless (optional)
-├── email/             # Resend / SMTP adapter
-├── billing/           # Stripe (optional)
-├── ai/                # Pydantic AI + LLM gateway (optional)
-├── observability/     # Logfire (optional)
-├── admin/             # super-admin endpoints
-└── models/            # SQLAlchemy ORM
-```
+OpenAPI: `/docs`; liveness: `/healthz`; readiness database, token store, dan migrasi: `/readyz`. Produksi memerlukan environment aman dan proses terkelola sesuai [runbook](../docs/enterprise/09-production-readiness.md). API menolak startup produksi bila secret, cookie, scanner, MFA, atau identitas build belum sesuai persyaratan.

@@ -6,10 +6,12 @@ Alembic's autogenerate sees them via ``Base.metadata``.
 
 from dogeapi.models.ai import AIMessage, AIThread
 from dogeapi.models.api_key import APIKey
+from dogeapi.models.appraisal_ai import AiAppraisalEstimate, AppraisalComparable
 from dogeapi.models.approval import ApprovalDelegation, ApprovalEvent, ApprovalRequest
 from dogeapi.models.audit_log import AuditLog
 from dogeapi.models.auth_token import AuthTokenStore
 from dogeapi.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+from dogeapi.models.borrower_portal import BorrowerAccount, BorrowerSession
 from dogeapi.models.complaint import ComplaintCase, ComplaintEvent
 from dogeapi.models.configuration import ConfigurationEvent, ConfigurationVersion
 from dogeapi.models.erp import (
@@ -67,7 +69,9 @@ __all__ = (
     "AIThread",
     "APIKey",
     "AccountingPeriod",
+    "AiAppraisalEstimate",
     "ApplicationStatusHistory",
+    "AppraisalComparable",
     "ApprovalDelegation",
     "ApprovalEvent",
     "ApprovalRequest",
@@ -78,6 +82,8 @@ __all__ = (
     "AuthTokenStore",
     "Base",
     "Borrower",
+    "BorrowerAccount",
+    "BorrowerSession",
     "Branch",
     "CashTransaction",
     "Cashbox",

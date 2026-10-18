@@ -29,7 +29,7 @@ GATEWAY_BASE = "https://api.llmgateway.io/v1"
 
 
 @pytest.fixture
-async def gateway_client(db_session: AsyncSession, redis_client: Redis) -> AsyncIterator[AsyncClient]:
+async def gateway_client(db_session: AsyncSession, legacy_redis: Redis) -> AsyncIterator[AsyncClient]:
     """Test client with FEATURE_AI_CHAT on AND a gateway key configured."""
     get_settings.cache_clear()
     settings = Settings(
@@ -38,6 +38,7 @@ async def gateway_client(db_session: AsyncSession, redis_client: Redis) -> Async
         DATABASE_URL=TEST_DB_URL_ASYNC,
         DATABASE_URL_SYNC=TEST_DB_URL_SYNC,
         REDIS_URL=TEST_REDIS_URL,
+        TOKEN_STORE_BACKEND="redis",
         FEATURE_AI_CHAT=True,
         LLM_GATEWAY_URL=GATEWAY_BASE,
         LLM_GATEWAY_API_KEY="test-key",
@@ -45,17 +46,17 @@ async def gateway_client(db_session: AsyncSession, redis_client: Redis) -> Async
     )
 
     app = create_app(settings=settings)
-    app.state.redis = redis_client
+    app.state.redis = legacy_redis
 
     from dogeapi.auth.security import build_authx
 
-    app.state.authx = build_authx(settings, redis=redis_client)
+    app.state.authx = build_authx(settings, redis=legacy_redis)
 
     async def _override_session() -> AsyncIterator[AsyncSession]:
         yield db_session
 
     async def _override_redis() -> AsyncIterator[Redis]:
-        yield redis_client
+        yield legacy_redis
 
     app.dependency_overrides[get_session] = _override_session
     app.dependency_overrides[get_redis] = _override_redis
@@ -136,7 +137,7 @@ class TestModelsEndpoint:
         assert "gpt-4o-mini" not in ids
 
     async def test_returns_echo_placeholder_when_unconfigured(
-        self, db_session: AsyncSession, redis_client: Redis
+        self, db_session: AsyncSession, legacy_redis: Redis
     ) -> None:
         get_settings.cache_clear()
         settings = Settings(
@@ -145,20 +146,21 @@ class TestModelsEndpoint:
             DATABASE_URL=TEST_DB_URL_ASYNC,
             DATABASE_URL_SYNC=TEST_DB_URL_SYNC,
             REDIS_URL=TEST_REDIS_URL,
+            TOKEN_STORE_BACKEND="redis",
             FEATURE_AI_CHAT=True,
         )
         app = create_app(settings=settings)
-        app.state.redis = redis_client
+        app.state.redis = legacy_redis
 
         from dogeapi.auth.security import build_authx
 
-        app.state.authx = build_authx(settings, redis=redis_client)
+        app.state.authx = build_authx(settings, redis=legacy_redis)
 
         async def _override_session() -> AsyncIterator[AsyncSession]:
             yield db_session
 
         async def _override_redis() -> AsyncIterator[Redis]:
-            yield redis_client
+            yield legacy_redis
 
         app.dependency_overrides[get_session] = _override_session
         app.dependency_overrides[get_redis] = _override_redis

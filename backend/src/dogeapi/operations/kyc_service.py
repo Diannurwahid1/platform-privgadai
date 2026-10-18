@@ -62,7 +62,7 @@ async def _borrower(session: AsyncSession, org_id: UUID, borrower_id: UUID) -> B
 
 
 async def create_verification(
-    session: AsyncSession, settings: Settings, org_id: UUID, actor_id: UUID, borrower_id: UUID, data: KycCreate
+    session: AsyncSession, settings: Settings, org_id: UUID, actor_id: UUID | None, borrower_id: UUID, data: KycCreate
 ) -> KycVerification:
     borrower = await _borrower(session, org_id, borrower_id)
     fingerprint = _fingerprint_nik(settings, org_id, data.nik)
@@ -106,7 +106,7 @@ async def create_verification(
             actor_user_id=actor_id,
             event_type="KycInitiated",
             to_status=item.status,
-            reason="Data identitas KTP direkam",
+            reason="Data identitas KTP direkam oleh borrower" if actor_id is None else "Data identitas KTP direkam",
         )
     )
 
@@ -127,7 +127,7 @@ async def store_document(
     session: AsyncSession,
     settings: Settings,
     org_id: UUID,
-    actor_id: UUID,
+    actor_id: UUID | None,
     borrower_id: UUID,
     verification_id: UUID,
     document_side: str,

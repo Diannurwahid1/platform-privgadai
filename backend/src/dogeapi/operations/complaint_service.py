@@ -78,7 +78,7 @@ async def create_complaint(session: AsyncSession, org_id: UUID, actor_id: UUID, 
     branch = await session.scalar(select(Branch).where(Branch.org_id == org_id, Branch.id == data.branch_id))
     borrower = await session.scalar(select(Borrower).where(Borrower.org_id == org_id, Borrower.id == data.borrower_id))
     if branch is None or borrower is None:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Cabang atau nasabah tidak valid pada tenant aktif")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Cabang atau nasabah tidak valid pada tenant aktif")
     if data.application_id is not None:
         application = await session.scalar(
             select(LoanApplication).where(
@@ -89,7 +89,7 @@ async def create_complaint(session: AsyncSession, org_id: UUID, actor_id: UUID, 
             )
         )
         if application is None:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Pengajuan tidak terkait nasabah dan cabang")
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Pengajuan tidak terkait nasabah dan cabang")
     now = datetime.now(UTC)
     response_hours, resolution_hours = SLA_HOURS[data.priority]
     item = ComplaintCase(
@@ -251,7 +251,7 @@ async def assign_complaint(
     )
     if assignment is None:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY, "Owner tidak memiliki penugasan aktif di cabang kasus"
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "Owner tidak memiliki penugasan aktif di cabang kasus"
         )
     previous = item.status
     item.assigned_to_user_id = assigned_to_user_id

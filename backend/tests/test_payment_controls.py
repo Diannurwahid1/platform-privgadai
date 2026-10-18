@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import uuid4
 
@@ -214,7 +214,7 @@ async def test_reconciliation_exception_resolution_is_maker_checker(db_session: 
         db_session,
         org.id,
         maker.id,
-        ReconciliationCreate(scope="cash_gl", business_date=date.today(), branch_id=branch.id),
+        ReconciliationCreate(scope="cash_gl", business_date=datetime.now(UTC).date(), branch_id=branch.id),
     )
     assert matched.status == "matched" and matched.variance_amount == 0
     exception = await payment_service.create_reconciliation(
@@ -223,7 +223,7 @@ async def test_reconciliation_exception_resolution_is_maker_checker(db_session: 
         maker.id,
         ReconciliationCreate(
             scope="bank_statement",
-            business_date=date.today(),
+            business_date=datetime.now(UTC).date(),
             branch_id=branch.id,
             observed_amount=Decimal("2000"),
             statement_reference="STMT-001",

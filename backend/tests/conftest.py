@@ -12,6 +12,8 @@ from collections.abc import AsyncIterator, Iterator
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from redis.asyncio import Redis
+from redis.exceptions import RedisError
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -147,6 +149,23 @@ async def redis_client() -> AsyncIterator[PostgresTokenStore]:
 
 
 @pytest.fixture
+async def legacy_redis() -> AsyncIterator[Redis]:
+    """Run optional Redis-only template tests when a local Redis is available."""
+    client = Redis.from_url(TEST_REDIS_URL, decode_responses=False)
+    try:
+        await client.ping()
+    except RedisError:
+        await client.aclose()
+        pytest.skip("Optional Redis-only module: Redis is not running locally")
+    await client.flushdb()
+    try:
+        yield client
+    finally:
+        await client.flushdb()
+        await client.aclose()
+
+
+@pytest.fixture
 async def client(
     settings: Settings,
     db_session: AsyncSession,
@@ -182,3 +201,6 @@ async def client(
     audit_engine = getattr(app.state, "audit_engine", None)
     if audit_engine is not None:
         await audit_engine.dispose()
+    readiness_engine = getattr(app.state, "readiness_engine", None)
+    if readiness_engine is not None:
+        await readiness_engine.dispose()

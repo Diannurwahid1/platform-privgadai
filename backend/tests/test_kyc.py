@@ -157,3 +157,9 @@ async def test_ktp_kyc_masks_nik_encrypts_document_and_enforces_checker(
     detail = await client.get(f"/v1/customers/{borrower.id}/kyc", headers=scoped)
     assert detail.status_code == 200, detail.text
     assert detail.json()["current_status"] == "verified"
+    image = await client.get(
+        f"/v1/customers/{borrower.id}/kyc/{verification.id}/documents/{document.id}", headers=scoped
+    )
+    assert image.status_code == 200
+    assert image.content == b"\xff\xd8\xffsynthetic-image-content\xff\xd9"
+    assert image.headers["Cache-Control"] == "no-store"

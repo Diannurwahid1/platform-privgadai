@@ -16,6 +16,7 @@ from dogeapi.operations.mvp_schemas import (
     LoanProductItem,
     PublicIntakeConfig,
 )
+from dogeapi.settings import get_settings
 
 router = APIRouter(prefix="/public/v1/partners", tags=["privgadai-public-intake"])
 
@@ -58,6 +59,8 @@ async def intake_config(slug: str, session: SessionDep) -> PublicIntakeConfig:
 
 @router.post("/{slug}/applications", response_model=ActionResult, status_code=status.HTTP_201_CREATED)
 async def public_create_application(slug: str, data: ApplicationCreate, session: SessionDep) -> ActionResult:
+    if slug == get_settings().BORROWER_ORG_SLUG:
+        raise HTTPException(status.HTTP_410_GONE, "Gunakan akun borrower di /borrower untuk pengajuan baru")
     partner = await _partner(session, slug)
     item = await mvp_service.create_application(session, partner.id, None, data)
     await session.commit()

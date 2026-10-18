@@ -517,9 +517,9 @@ async def create_delegation(
     reason: str,
 ) -> ApprovalDelegation:
     if delegator_user_id == delegate_user_id:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Delegator dan penerima delegasi harus berbeda")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Delegator dan penerima delegasi harus berbeda")
     if ends_at <= starts_at or ends_at <= datetime.now(UTC):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Periode delegasi tidak valid")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Periode delegasi tidak valid")
     actor_membership = await session.scalar(
         select(Membership).where(Membership.org_id == org_id, Membership.user_id == actor_id)
     )
@@ -532,7 +532,7 @@ async def create_delegation(
         select(Membership).where(Membership.org_id == org_id, Membership.user_id == delegate_user_id)
     )
     if delegate_membership is None:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Penerima delegasi bukan anggota tenant")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Penerima delegasi bukan anggota tenant")
     overlap = await session.scalar(
         select(ApprovalDelegation.id).where(
             ApprovalDelegation.org_id == org_id,
@@ -568,7 +568,7 @@ async def _ensure_user_holds_role(
         select(Membership).where(Membership.org_id == org_id, Membership.user_id == user_id)
     )
     if membership is None:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Delegator bukan anggota tenant")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Delegator bukan anggota tenant")
     if membership.role.value in {"owner", "admin"}:
         return
     criteria = [
@@ -580,7 +580,7 @@ async def _ensure_user_holds_role(
     if branch_id is not None:
         criteria.append(StaffAssignment.branch_id == branch_id)
     if await session.scalar(select(StaffAssignment.id).where(*criteria)) is None:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Delegator tidak memegang peran yang didelegasikan")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Delegator tidak memegang peran yang didelegasikan")
 
 
 async def list_delegations(session: AsyncSession, org_id: UUID) -> list[dict[str, object]]:

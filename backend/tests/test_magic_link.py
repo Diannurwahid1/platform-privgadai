@@ -5,6 +5,8 @@ from __future__ import annotations
 import pytest
 from httpx import AsyncClient
 
+from dogeapi.token_store import PostgresTokenStore
+
 pytestmark = [pytest.mark.integration, pytest.mark.feature_flags(magic_link=True)]
 
 
@@ -75,24 +77,16 @@ class TestConsume:
         replay = await client.post("/auth/magic-link/consume", json={"token": token})
         assert replay.status_code == 400
 
-    async def test_creates_user_on_first_link_consumption(self, client: AsyncClient) -> None:
+    async def test_creates_user_on_first_link_consumption(
+        self, client: AsyncClient, redis_client: PostgresTokenStore
+    ) -> None:
         """A magic-link to an unknown email creates a passwordless user."""
         # We bypass the request privacy filter by issuing a token directly.
         from datetime import timedelta
 
         from dogeapi.magic_link import service
 
-        redis = (await client.get("/healthz")).headers  # touch the client
-        del redis  # silencing unused
-
-        # Issue token directly via the redis client used by the test fixture
-        # — easier than pre-registering then deleting.
-        # The conftest's redis_client fixture is the one wired into the app.
-        from redis.asyncio import Redis
-
-        rclient = Redis.from_url("redis://localhost:6379/15", decode_responses=False)
-        token = await service.issue(rclient, "newbie@example.com", ttl=timedelta(minutes=5))
-        await rclient.aclose()
+        token = await service.issue(redis_client, "newbie@example.com", ttl=timedelta(minutes=5))
 
         response = await client.post("/auth/magic-link/consume", json={"token": token})
         assert response.status_code == 200

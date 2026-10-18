@@ -63,6 +63,15 @@ class Settings(BaseSettings):
     KYC_OCR_API_KEY: str = ""
     KYC_OCR_TIMEOUT_SECONDS: int = 60
 
+    BORROWER_ORG_SLUG: str = "denjaka-2"
+    BYNARA_BASE_URL: str = "https://router.bynara.id/v1"
+    BYNARA_API_KEY: str = ""
+    BYNARA_MODEL: str = "step-5-preview"
+    BYNARA_TIMEOUT_SECONDS: int = 60
+    TAVILY_API_KEY: str = ""
+    TAVILY_BASE_URL: str = "https://api.tavily.com"
+    TAVILY_TIMEOUT_SECONDS: int = 18
+
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3001"
 
     FEATURE_API_KEYS: bool = True

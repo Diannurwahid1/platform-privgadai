@@ -26,7 +26,7 @@ PASSWORD = "correct horse battery staple"
 
 
 @pytest.fixture
-async def ai_client(db_session: AsyncSession, redis_client: Redis) -> AsyncIterator[AsyncClient]:
+async def ai_client(db_session: AsyncSession, legacy_redis: Redis) -> AsyncIterator[AsyncClient]:
     get_settings.cache_clear()
     get_agent_factory.cache_clear()
     settings = Settings(
@@ -35,21 +35,22 @@ async def ai_client(db_session: AsyncSession, redis_client: Redis) -> AsyncItera
         DATABASE_URL=TEST_DB_URL_ASYNC,
         DATABASE_URL_SYNC=TEST_DB_URL_SYNC,
         REDIS_URL=TEST_REDIS_URL,
+        TOKEN_STORE_BACKEND="redis",
         FEATURE_AI_CHAT=True,
     )
 
     app = create_app(settings=settings)
-    app.state.redis = redis_client
+    app.state.redis = legacy_redis
 
     from dogeapi.auth.security import build_authx
 
-    app.state.authx = build_authx(settings, redis=redis_client)
+    app.state.authx = build_authx(settings, redis=legacy_redis)
 
     async def _override_session() -> AsyncIterator[AsyncSession]:
         yield db_session
 
     async def _override_redis() -> AsyncIterator[Redis]:
-        yield redis_client
+        yield legacy_redis
 
     app.dependency_overrides[get_session] = _override_session
     app.dependency_overrides[get_redis] = _override_redis

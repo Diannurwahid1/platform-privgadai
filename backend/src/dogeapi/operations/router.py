@@ -7,8 +7,10 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
+from sqlalchemy import select
 
 from dogeapi.deps import OrgIdDep, SessionDep, UserDep
+from dogeapi.models import AppraisalComparable, AssetCategory
 from dogeapi.operations import mvp_service, service
 from dogeapi.operations.mvp_schemas import (
     AcceptanceCreate,
@@ -21,6 +23,7 @@ from dogeapi.operations.mvp_schemas import (
     BranchCreate,
     BranchItem,
     CollateralTimeline,
+    ComparableCreate,
     CustodyEventCreate,
     CustodyLocationCreate,
     CustodyMovementCreate,
@@ -244,7 +247,7 @@ async def upload_evidence(
     if len(content) > 10 * 1024 * 1024:
         raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "Evidence file exceeds 10 MB")
     if not content:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Evidence file is empty")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Evidence file is empty")
     item = await mvp_service.store_evidence_upload(
         session,
         org_id,
@@ -320,6 +323,43 @@ async def create_appraisal(data: AppraisalCreate, session: SessionDep, org_id: O
         status=item.status,
         message="Appraisal submitted for checker approval",
     )
+
+
+@router.get("/appraisals/comparables")
+async def list_comparables(session: SessionDep, org_id: OrgIdDep, user: UserDep) -> list[dict[str, object]]:
+    branches = await mvp_service.visible_branch_ids(
+        session, org_id, user.id, {"ops_admin", "branch_manager", "appraiser", "reviewer", "auditor"}
+    )
+    if not branches:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Akses appraisal diperlukan")
+    rows = list(await session.scalars(select(AppraisalComparable).where(
+        AppraisalComparable.org_id == org_id, AppraisalComparable.is_active
+    ).order_by(AppraisalComparable.observed_at.desc()).limit(100)))
+    return [{"id": row.id, "category_code": row.category_code, "brand": row.brand,
+             "model": row.model, "condition_grade": row.condition_grade, "market_value": row.market_value,
+             "source_label": row.source_label, "source_reference": row.source_reference,
+             "observed_at": row.observed_at} for row in rows]
+
+
+@router.post("/appraisals/comparables", status_code=status.HTTP_201_CREATED, dependencies=[master_write_access])
+async def add_comparable(data: ComparableCreate, session: SessionDep, org_id: OrgIdDep,
+                         user: UserDep) -> dict[str, object]:
+    branches = await mvp_service.visible_branch_ids(
+        session, org_id, user.id, {"ops_admin", "branch_manager", "appraiser"}
+    )
+    if not branches:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Akses penaksir diperlukan")
+    category = await session.scalar(select(AssetCategory).where(
+        AssetCategory.org_id == org_id, AssetCategory.code == data.category_code, AssetCategory.is_active
+    ))
+    if category is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Kategori tidak aktif")
+    if data.source_label.upper().startswith("DEMO"):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Sumber riil diperlukan")
+    item = AppraisalComparable(org_id=org_id, verified_by_user_id=user.id, **data.model_dump())
+    session.add(item)
+    await session.commit()
+    return {"id": item.id, "status": "active"}
 
 
 @router.post("/offers", response_model=ActionResult, status_code=status.HTTP_201_CREATED, dependencies=[write_access])

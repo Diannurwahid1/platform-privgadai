@@ -7,6 +7,8 @@ never registered, their optional Python deps never imported.
 
 from __future__ import annotations
 
+import asyncio
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -58,6 +60,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         audit_engine = getattr(app.state, "audit_engine", None)
         if audit_engine is not None:
             await audit_engine.dispose()
+        readiness_engine = getattr(app.state, "readiness_engine", None)
+        if readiness_engine is not None:
+            await readiness_engine.dispose()
         rl_redis = getattr(app.state, "rate_limit_redis", None)
         if rl_redis is not None:
             await rl_redis.aclose()
@@ -82,6 +87,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         openapi_url="/openapi.json",
     )
     app.state.settings = settings
+    backend_root = Path(__file__).resolve().parents[2]
+    alembic_config = Config(backend_root / "alembic.ini")
+    alembic_config.set_main_option("script_location", str(backend_root / "alembic"))
+    app.state.readiness_expected_revisions = sorted(ScriptDirectory.from_config(alembic_config).get_heads())
+    app.state.readiness_engine = create_ready_engine(settings.DATABASE_URL, pool_pre_ping=True)
+    app.state.readiness_lock = asyncio.Lock()
+    app.state.readiness_cache = None
 
     app.add_middleware(OperationalHeadersMiddleware, production=settings.is_production)
 
@@ -106,41 +118,47 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/readyz", tags=["meta"])
     async def readyz() -> JSONResponse:
-        db_ok = False
-        token_store_ok = False
-        migration_ok = False
-        database_revisions: list[str] = []
+        # Orchestrators can poll readiness several times per second. Reusing the
+        # process pools and coalescing concurrent checks avoids a connection
+        # storm while keeping failure detection bounded to two seconds.
+        async with app.state.readiness_lock:
+            now = time.monotonic()
+            cached = app.state.readiness_cache
+            if cached is not None and now - cached[0] < 2.0:
+                status_code, content = cached[1], cached[2]
+                return JSONResponse(status_code=status_code, content=content)
 
-        backend_root = Path(__file__).resolve().parents[2]
-        alembic_config = Config(backend_root / "alembic.ini")
-        alembic_config.set_main_option("script_location", str(backend_root / "alembic"))
-        expected_revisions = set(ScriptDirectory.from_config(alembic_config).get_heads())
-
-        engine = create_ready_engine(settings.DATABASE_URL, pool_pre_ping=True)
-        try:
-            async with engine.connect() as conn:
-                await conn.execute(text("select 1"))
-                result = await conn.execute(text("select version_num from alembic_version"))
-                database_revisions = sorted(str(row[0]) for row in result)
-            db_ok = True
-            migration_ok = set(database_revisions) == expected_revisions
-        except Exception:
             db_ok = False
-        finally:
-            await engine.dispose()
-
-        token_store = create_token_store(settings)
-        try:
-            token_store_ok = bool(await token_store.ping())
-        except Exception:
             token_store_ok = False
-        finally:
-            await token_store.aclose()
+            migration_ok = False
+            database_revisions: list[str] = []
+            expected_revisions = set(app.state.readiness_expected_revisions)
 
-        ready = db_ok and token_store_ok and migration_ok
-        return JSONResponse(
-            status_code=200 if ready else 503,
-            content={
+            try:
+                async with app.state.readiness_engine.connect() as conn:
+                    await conn.execute(text("select 1"))
+                    result = await conn.execute(text("select version_num from alembic_version"))
+                    database_revisions = sorted(str(row[0]) for row in result)
+                db_ok = True
+                migration_ok = set(database_revisions) == expected_revisions
+            except Exception:
+                db_ok = False
+
+            token_store = getattr(app.state, "redis", None)
+            owns_token_store = token_store is None
+            if owns_token_store:
+                token_store = create_token_store(settings)
+            try:
+                token_store_ok = bool(await token_store.ping())
+            except Exception:
+                token_store_ok = False
+            finally:
+                if owns_token_store:
+                    await token_store.aclose()
+
+            ready = db_ok and token_store_ok and migration_ok
+            status_code = 200 if ready else 503
+            content = {
                 "status": "ready" if ready else "degraded",
                 "db_ok": db_ok,
                 "token_store_ok": token_store_ok,
@@ -148,8 +166,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "database_revisions": database_revisions,
                 "expected_revisions": sorted(expected_revisions),
                 "build_sha": settings.BUILD_SHA,
-            },
-        )
+            }
+            app.state.readiness_cache = (now, status_code, content)
+            return JSONResponse(status_code=status_code, content=content)
 
     @app.get("/", tags=["meta"])
     async def root() -> dict[str, str]:
@@ -163,6 +182,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # this router at module load time creates a cycle through security ->
     # organizations.service -> organizations.router in a fresh process.
     from dogeapi.operations.approval_router import router as approval_router
+    from dogeapi.operations.borrower_router import router as borrower_router
     from dogeapi.operations.complaint_router import router as complaint_router
     from dogeapi.operations.configuration_router import router as configuration_router
     from dogeapi.operations.erp_router import router as erp_router
@@ -179,6 +199,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(configuration_router)
     app.include_router(payment_router)
     app.include_router(public_operations_router)
+    app.include_router(borrower_router)
     app.include_router(erp_router)
     app.include_router(incident_router)
     app.include_router(kyc_router)

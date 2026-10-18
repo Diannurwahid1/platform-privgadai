@@ -67,7 +67,7 @@ async def record_payment(session: AsyncSession, org_id: UUID, actor_id: UUID, da
         raise HTTPException(status.HTTP_409_CONFLICT, "Pembayaran hanya dapat diposting pada pinjaman aktif")
     total_outstanding = account.outstanding_fee + account.outstanding_principal
     if data.amount > total_outstanding:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Pembayaran melebihi saldo terutang")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Pembayaran melebihi saldo terutang")
     accounts, cashbox = await erp_service.ensure_finance_masters(session, org_id, application.branch_id)
     teller: TellerSession | None = None
     if data.channel == "cash":
@@ -242,7 +242,7 @@ async def request_adjustment(
             select(PaymentReceipt).where(PaymentReceipt.org_id == org_id, PaymentReceipt.id == data.payment_receipt_id)
         )
         if receipt is None or receipt.loan_account_id != account.id:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Receipt tidak sesuai loan account")
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Receipt tidak sesuai loan account")
         refunded = (
             await session.scalar(
                 select(func.coalesce(func.sum(PaymentAdjustment.amount), 0)).where(
@@ -254,11 +254,11 @@ async def request_adjustment(
             )
         ) or Decimal("0")
         if data.amount + refunded > receipt.amount:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Refund/reversal melebihi nilai receipt tersisa")
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Refund/reversal melebihi nilai receipt tersisa")
     if data.adjustment_type in {"waiver", "credit_adjustment"}:
         outstanding = account.outstanding_principal if data.component == "principal" else account.outstanding_fee
         if data.amount > outstanding:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Adjustment melebihi saldo komponen")
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Adjustment melebihi saldo komponen")
     item = PaymentAdjustment(org_id=org_id, requested_by_user_id=actor_id, **data.model_dump())
     session.add(item)
     await session.flush()

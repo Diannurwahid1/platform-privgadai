@@ -142,6 +142,17 @@ class AppraisalCreate(BaseModel):
     rationale: str = Field(min_length=5, max_length=4000)
 
 
+class ComparableCreate(BaseModel):
+    category_code: str = Field(min_length=2, max_length=40)
+    brand: str | None = Field(default=None, max_length=100)
+    model: str | None = Field(default=None, max_length=120)
+    condition_grade: str = Field(pattern="^[ABCD]$")
+    market_value: Decimal = Field(gt=0)
+    source_label: str = Field(min_length=5, max_length=200)
+    source_reference: str = Field(min_length=3, max_length=200)
+    observed_at: datetime
+
+
 class OfferCreate(BaseModel):
     application_id: UUID
     principal_amount: Decimal = Field(gt=0)
@@ -149,6 +160,7 @@ class OfferCreate(BaseModel):
     service_fee_amount: Decimal = Field(ge=0)
     expires_at: datetime
     agreement_version: str = Field(min_length=1, max_length=32)
+    decision_reason: str | None = Field(default=None, max_length=2000)
 
 
 class AcceptanceCreate(BaseModel):
@@ -234,6 +246,7 @@ class ApplicationDetail(BaseModel):
     product: dict[str, object] | None
     borrower: dict[str, object]
     asset: dict[str, object]
+    ai_estimate: dict[str, object] | None
     requested_amount: Decimal
     requested_tenor_days: int | None
     purpose: str | None

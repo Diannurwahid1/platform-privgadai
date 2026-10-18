@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 180;
+export const maxDuration = 300;
 
 const MAX_REQUEST_BYTES = 11 * 1024 * 1024;
 const HOP_BY_HOP_HEADERS = [
@@ -37,6 +37,7 @@ async function proxy(
   const { path } = await context.params;
   const target = new URL(`/${path.map(encodeURIComponent).join("/")}`, backendOrigin());
   target.search = request.nextUrl.search;
+  const appraisalStream = target.pathname === "/borrower/v1/estimates/stream";
 
   const headers = new Headers(request.headers);
   for (const header of HOP_BY_HOP_HEADERS) headers.delete(header);
@@ -54,7 +55,7 @@ async function proxy(
       body,
       redirect: "manual",
       cache: "no-store",
-      signal: AbortSignal.timeout(150_000),
+      signal: AbortSignal.timeout(appraisalStream ? 300_000 : 150_000),
     });
     const responseHeaders = new Headers(upstream.headers);
     responseHeaders.delete("content-length");
@@ -74,7 +75,7 @@ async function proxy(
   } catch (error) {
     const timedOut = error instanceof Error && error.name === "TimeoutError";
     return NextResponse.json(
-      { detail: timedOut ? "Proses OCR melewati batas waktu 150 detik" : "Backend PrivGadai memutus koneksi" },
+      { detail: timedOut ? (appraisalStream ? "Analisis barang melewati batas waktu 300 detik" : "Proses OCR melewati batas waktu 150 detik") : "Backend PrivGadai memutus koneksi" },
       { status: 502 },
     );
   }

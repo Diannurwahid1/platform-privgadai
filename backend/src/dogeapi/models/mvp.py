@@ -229,6 +229,7 @@ class Offer(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     total_due_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     agreement_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    decision_reason: Mapped[str | None] = mapped_column(Text(), nullable=True)
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="offered", server_default="offered")
 
 

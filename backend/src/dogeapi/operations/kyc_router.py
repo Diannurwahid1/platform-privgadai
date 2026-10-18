@@ -6,12 +6,12 @@ from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
 from sqlalchemy import select
 
 from dogeapi.deps import OrgIdDep, SessionDep, SettingsDep, UserDep
 from dogeapi.file_security import scan_upload
-from dogeapi.models import Borrower, KycVerification, LoanApplication
+from dogeapi.models import Borrower, KycDocument, KycVerification, LoanApplication
 from dogeapi.operations import kyc_provider, kyc_service, mvp_service
 from dogeapi.operations.erp_schemas import ERPActionResult
 from dogeapi.operations.kyc_schemas import KycCreate, KycReview
@@ -101,6 +101,26 @@ async def get_customer_kyc(
     return await kyc_service.serialize_customer_kyc(session, org_id, customer_id, settings)
 
 
+@router.get("/{customer_id}/kyc/{verification_id}/documents/{document_id}")
+async def view_kyc_document(customer_id: UUID, verification_id: UUID, document_id: UUID,
+                            session: SessionDep, settings: SettingsDep, org_id: OrgIdDep,
+                            user: UserDep) -> Response:
+    await mvp_service.ensure_customer_access(session, org_id, user.id, customer_id,
+        {"ops_admin", "branch_manager", "loan_officer", "reviewer", "auditor"})
+    verification = await session.scalar(select(KycVerification).where(
+        KycVerification.org_id == org_id, KycVerification.id == verification_id,
+        KycVerification.borrower_id == customer_id))
+    document = await session.scalar(select(KycDocument).where(
+        KycDocument.org_id == org_id, KycDocument.id == document_id,
+        KycDocument.verification_id == verification_id))
+    if verification is None or document is None or document.scan_status != "clean":
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Dokumen KYC tidak tersedia")
+    content = await kyc_service._document_bytes(settings, document)
+    return Response(content=content, media_type=document.content_type,
+        headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff",
+                 "Content-Security-Policy": "sandbox"})
+
+
 @router.post(
     "/{customer_id}/kyc", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_scope("org:write"))]
 )
@@ -137,12 +157,12 @@ async def preview_ktp_ocr(
         raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Foto KTP harus berupa JPEG, PNG, atau WebP")
     content = await file.read(10 * 1024 * 1024 + 1)
     if not content:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Foto KTP kosong")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Foto KTP kosong")
     if len(content) > 10 * 1024 * 1024:
         raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "Foto KTP melebihi 10 MB")
     scan = await scan_upload(content, file.content_type or "application/octet-stream", settings)
     if scan.status != "clean":
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Foto KTP gagal pemeriksaan keamanan")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Foto KTP gagal pemeriksaan keamanan")
     result = await kyc_provider.run_ocr(
         settings, content, file.content_type or "application/octet-stream", file.filename or "ktp.jpg"
     )
@@ -183,7 +203,7 @@ async def upload_kyc_document(
         raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Dokumen harus berupa JPEG, PNG, WebP, atau PDF")
     content = await file.read(10 * 1024 * 1024 + 1)
     if not content:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Dokumen kosong")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Dokumen kosong")
     if len(content) > 10 * 1024 * 1024:
         raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "Dokumen melebihi 10 MB")
     item = await kyc_service.store_document(

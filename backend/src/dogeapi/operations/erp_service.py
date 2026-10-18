@@ -126,7 +126,7 @@ async def post_journal(
     total_debit = sum((line[1] for line in lines), Decimal("0"))
     total_credit = sum((line[2] for line in lines), Decimal("0"))
     if total_debit <= 0 or total_debit != total_credit:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Journal entry must be balanced")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Journal entry must be balanced")
     entry = JournalEntry(
         org_id=org_id,
         application_id=application_id,
@@ -178,7 +178,7 @@ async def create_accounting_period(
     session: AsyncSession, org_id: UUID, data: AccountingPeriodCreate
 ) -> AccountingPeriod:
     if data.period_end < data.period_start:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Rentang accounting period tidak valid")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Rentang accounting period tidak valid")
     overlap = await session.scalar(
         select(AccountingPeriod).where(
             AccountingPeriod.org_id == org_id,
@@ -680,7 +680,7 @@ async def close_teller_session(
     else:
         reason = (variance_reason or "").strip()
         if len(reason) < 5:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Alasan selisih kas wajib diisi")
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Alasan selisih kas wajib diisi")
         item.status = "variance_pending"
         item.variance_reason = reason
         from dogeapi.operations import approval_service
@@ -1061,9 +1061,9 @@ async def create_collection_promise(
     if item is None:
         raise _not_found("Collection case")
     if amount > item.outstanding_amount:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Promise amount exceeds outstanding amount")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Promise amount exceeds outstanding amount")
     if promised_at <= datetime.now(UTC):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Promise due date must be in the future")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Promise due date must be in the future")
     existing = await session.scalar(
         select(CollectionPromise.id).where(
             CollectionPromise.org_id == org_id,
@@ -1198,7 +1198,7 @@ async def create_regulatory_run(
     if regulatory_policy.get("require_active_template") is True and template.status != "active":
         raise HTTPException(status.HTTP_409_CONFLICT, "Effective regulatory policy requires an active template")
     if data.period_end < data.period_start:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Report period is invalid")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Report period is invalid")
     report = await financial_reports(session, org_id)
     validations: list[dict[str, object]] = []
     if template.status != "active":
@@ -1723,7 +1723,7 @@ async def submit_inventory_check(
     snapshot = {row.application_id: row for row in snapshot_rows}
     submitted_ids = {row.application_id for row in data.observations}
     if submitted_ids != set(snapshot):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Semua item snapshot wajib dihitung tepat satu kali")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Semua item snapshot wajib dihitung tepat satu kali")
     for observation in data.observations:
         row = snapshot[observation.application_id]
         row.observed_status = observation.observed_status
@@ -1782,7 +1782,7 @@ async def recount_inventory_check(
     )
     variance = {row.application_id: row for row in variance_rows}
     if {row.application_id for row in data.observations} != set(variance):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Recount wajib mencakup seluruh item variance")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Recount wajib mencakup seluruh item variance")
     for observation in data.observations:
         row = variance[observation.application_id]
         row.recount_observed_status = observation.observed_status

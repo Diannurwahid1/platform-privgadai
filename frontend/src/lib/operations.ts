@@ -105,6 +105,14 @@ export type ApplicationDetail = {
   product: Record<string, string> | null;
   borrower: Record<string, string>;
   asset: Record<string, string | number | null>;
+  ai_estimate: {
+    id: string; status: string; low_value: number | null; high_value: number | null;
+    confidence: number | null; quality_score: number; quality_findings: string[];
+    vision_result: Record<string, unknown>; vision_status: string; comparable_count: number;
+    asset_description: string | null;
+    research_result: { status?: string; searched_at?: string; reason?: string; queries?: string[]; sources?: Array<{ title: string; url: string; host: string }>; selected?: Array<{ title: string; url: string; host: string; price_idr: number; price_kind: string; source_date?: string; price_evidence?: string }> };
+    explanation: string; model_name: string;
+  } | null;
   requested_amount: number;
   requested_tenor_days: number | null;
   purpose: string | null;
@@ -281,7 +289,7 @@ export type KycVerification = {
   occupation: string | null; verification_method: string; provider_name: string | null; provider_reference: string | null;
   risk_level: string; face_match_score: number | null; liveness_score: number | null;
   document_authenticity_score: number | null; pep_match: boolean; sanctions_match: boolean;
-  decision_reason: string | null; initiated_by_user_id: string; reviewed_by_user_id: string | null;
+  decision_reason: string | null; initiated_by_user_id: string | null; reviewed_by_user_id: string | null;
   created_at: string; reviewed_at: string | null; expires_at: string | null;
   documents: Array<Record<string, unknown>>; events: Array<Record<string, unknown>>;
   provider_checks: KycProviderCheck[];

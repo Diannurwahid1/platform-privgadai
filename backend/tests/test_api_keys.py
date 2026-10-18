@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from typing import Any
 
 import pytest
@@ -10,6 +11,13 @@ from httpx import AsyncClient
 pytestmark = pytest.mark.integration
 
 PASSWORD = "correct horse battery staple"
+
+
+def test_api_key_parser_accepts_urlsafe_underscores() -> None:
+    from dogeapi.api_keys.service import parse_key
+
+    key = f"doge_ab_cd_ef_{'a' * 20}_suffix"
+    assert parse_key(key) == ("ab_cd_ef", hashlib.sha256(key.encode()).hexdigest())
 
 
 async def _signup_owner_with_org(client: AsyncClient) -> dict[str, Any]:
