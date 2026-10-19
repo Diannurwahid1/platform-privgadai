@@ -72,7 +72,7 @@ export default function AdminLoginPage() {
         transition={{ duration: 0.25 }}
         className="w-full"
       >
-        <Image src="/privgadai-logo-dark.svg" alt="PrivGadai" width={390} height={190} className="mx-auto mb-5 h-20 w-auto" priority />
+        <Image src="/privgadai-logo-dark.svg" alt="PrivGadai" width={500} height={190} className="mx-auto mb-5 h-20 w-auto" priority />
         <Card>
           <CardHeader>
             <p className="text-xs font-semibold uppercase tracking-[0.28em] text-primary">

@@ -108,7 +108,7 @@ function OrgChrome({ children }: { children: ReactNode }) {
       <div className={cn("flex h-[76px] items-center border-b border-white/10", collapsed ? "justify-center px-2" : "px-5")}>
         {collapsed ? <span className="grid h-10 w-10 place-items-center rounded-xl bg-blue-500 text-sm font-black tracking-[-0.08em]">PG</span> : (
           <div className="min-w-0">
-            <Image src="/privgadai-logo-light.svg" alt="PrivGadai" width={390} height={190} className="h-10 w-auto max-w-[178px]" priority />
+            <Image src="/privgadai-logo-light.svg" alt="PrivGadai" width={500} height={190} className="h-10 w-auto max-w-[178px]" priority />
             <p className="mt-0.5 text-[8px] font-semibold uppercase tracking-[0.24em] text-blue-200/55">Partner Operations</p>
           </div>
         )}

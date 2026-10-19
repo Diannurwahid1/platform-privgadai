@@ -51,7 +51,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
       <section className="mx-auto grid min-h-[calc(100vh-2rem)] max-w-7xl gap-5 rounded-4xl border border-border bg-background/82 p-4 backdrop-blur-md lg:grid-cols-[18rem_1fr] lg:p-5">
         <aside className="flex flex-col overflow-hidden rounded-3xl bg-foreground p-5 text-background">
           <div className="border-b border-background/15 pb-5">
-            <Image src="/privgadai-logo-light.svg" alt="PrivGadai" width={390} height={190} className="h-14 w-auto" priority />
+            <Image src="/privgadai-logo-light.svg" alt="PrivGadai" width={500} height={190} className="h-14 w-auto" priority />
             <p className="text-[0.65rem] font-semibold uppercase tracking-[0.32em] text-primary">
               Operator console
             </p>

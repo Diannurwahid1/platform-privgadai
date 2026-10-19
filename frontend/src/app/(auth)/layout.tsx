@@ -11,7 +11,7 @@ export default function AuthLayout({
       <header className="border-b border-border">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <Link href="/" aria-label="PrivGadai">
-            <Image src="/privgadai-logo-dark.svg" alt="PrivGadai" width={390} height={190} className="h-10 w-auto" priority />
+            <Image src="/privgadai-logo-dark.svg" alt="PrivGadai" width={500} height={190} className="h-10 w-auto" priority />
           </Link>
           <nav className="flex gap-2 text-sm">
             <Link href="/login" className="px-3 py-1.5 hover:underline">

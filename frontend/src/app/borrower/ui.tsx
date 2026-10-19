@@ -9,7 +9,7 @@ import { borrowerFetch, type BorrowerMe } from "@/lib/borrower";
 import s from "./borrower.module.css";
 
 export function Brand() {
-  return <Link href="/borrower" className={s.brand}><Image src="/privgadai-logo-dark.svg" alt="PrivGadai" width={143} height={70} priority /></Link>;
+  return <Link href="/borrower" className={s.brand}><Image src="/privgadai-logo-dark.svg" alt="PrivGadai" width={185} height={70} priority /></Link>;
 }
 
 export function Shell({ children, me }: { children: ReactNode; me?: BorrowerMe | null }) {
