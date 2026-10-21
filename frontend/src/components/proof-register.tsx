@@ -9,7 +9,7 @@ const statusLabels: Record<string, string> = {
   verified_on_chain: "Ada di chain", failed: "Perlu pengiriman ulang", reverted: "Transaksi gagal",
 };
 
-export function ProofRegister({ applicationId }: { applicationId?: string }) {
+export function ProofRegister({ applicationId, refreshToken }: { applicationId?: string; refreshToken?: number }) {
   const [proofs, setProofs] = useState<CollateralProof[]>([]);
   const [checks, setChecks] = useState<Record<string, ProofVerification>>({});
   const [busy, setBusy] = useState<string | null>(null);
@@ -22,7 +22,14 @@ export function ProofRegister({ applicationId }: { applicationId?: string }) {
     finally { setBusy(null); }
   }, [applicationId]);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => { void refresh(); }, [refresh, refreshToken]);
+  useEffect(() => {
+    if (!proofs.some((proof) => ["pending", "submitted"].includes(proof.status))) return;
+    const timer = window.setInterval(() => {
+      void listCollateralProofs(applicationId).then(setProofs).catch(() => setError("Status proof belum dapat diperbarui."));
+    }, 12000);
+    return () => window.clearInterval(timer);
+  }, [applicationId, proofs]);
 
   async function verify(id: string) {
     setBusy(id);

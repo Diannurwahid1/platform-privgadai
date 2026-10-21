@@ -28,12 +28,13 @@ export default function CollateralPage() {
   const [destinationId, setDestinationId] = useState("");
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
+  const [proofRefreshToken, setProofRefreshToken] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     Promise.all([listApplications(100), listCustodyLocations(), listCustodyMovements()]).then(([applications, vaults, movementRows]) => { setItems(applications); setLocations(vaults); setMovements(movementRows); }).catch((reason: { detail?: string }) => setError(reason.detail ?? "Collateral Passport gagal dimuat"));
   }, []);
-  async function refreshMovements(){setMovements(await listCustodyMovements());setItems(await listApplications(100));}
+  async function refreshMovements(){setMovements(await listCustodyMovements());setItems(await listApplications(100));setProofRefreshToken((value)=>value+1);}
   async function createMovement(){if(!applicationId||!destinationId||reason.length<5){setError("Pilih agunan, vault tujuan, dan isi alasan mutasi.");return;}setBusy("create");setError(null);try{await requestCustodyMovement({application_id:applicationId,to_location_id:destinationId,reason});setNotice("Mutasi dibuat. Custodian asal harus mencatat dispatch dan nomor segel.");setApplicationId("");setDestinationId("");setReason("");await refreshMovements();}catch(value){setError((value as {detail?:string}).detail??"Mutasi gagal dibuat");}finally{setBusy(null);}}
   async function dispatch(item:CustodyMovement){const seal=window.prompt("Nomor segel keluar:");if(!seal)return;setBusy(item.id);try{await dispatchCustodyMovement(item.id,seal,"Barang dan segel diperiksa saat keluar vault");setNotice("Barang berstatus in transit.");await refreshMovements();}catch(value){setError((value as {detail?:string}).detail??"Dispatch gagal");}finally{setBusy(null);}}
   async function receive(item:CustodyMovement){const seal=window.prompt("Nomor segel saat diterima:",item.seal_out??"");if(!seal)return;setBusy(item.id);try{await receiveCustodyMovement(item.id,seal,"Segel cocok dan kondisi barang diterima utuh");setNotice("Mutasi selesai dan lokasi custody diperbarui.");await refreshMovements();}catch(value){setError((value as {detail?:string}).detail??"Penerimaan gagal");}finally{setBusy(null);}}
@@ -55,7 +56,7 @@ export default function CollateralPage() {
       <div className="border-b border-border px-5 py-4"><h2 className="font-bold">Register agunan</h2><p className="mt-1 text-xs text-muted-foreground">Klik pengajuan untuk menjalankan pickup, custody, settlement, dan pengembalian.</p></div>
       <div className="divide-y divide-border">{items.map((item) => <Link key={item.id} href={`/orgs/${slug}/loans/applications/${item.id}`} className="flex flex-col gap-3 px-5 py-4 transition hover:bg-surface-soft sm:flex-row sm:items-center"><div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-surface-blue text-primary"><PackageCheck className="h-5 w-5" /></div><div className="min-w-0 flex-1"><p className="font-mono text-xs font-bold text-primary">{item.application_no}</p><p className="mt-1 truncate text-sm font-semibold">{item.asset_label}</p></div><div className="sm:text-right"><p className="text-xs font-bold">{labels[item.collateral_status] ?? item.collateral_status}</p><p className="mt-1 text-[11px] text-muted-foreground">{item.branch_code} · {item.borrower_name}</p></div><ArrowRight className="h-4 w-4 text-muted-foreground" /></Link>)}</div>
     </section>
-    <ProofRegister />
+    <ProofRegister refreshToken={proofRefreshToken} />
   </div>;
 }
 
