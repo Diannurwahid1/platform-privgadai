@@ -16,6 +16,7 @@ from dogeapi.auth.passwords import hash_password
 from dogeapi.models import (
     ApprovalRequest,
     BorrowerAccount,
+    CollateralProof,
     DebtorProfile,
     KycVerification,
     LoanApplication,
@@ -57,8 +58,10 @@ async def _register_and_switch(client: AsyncClient) -> tuple[dict[str, str], dic
 
 
 async def test_complete_mvp_workflow_is_tenant_scoped(
-    client: AsyncClient, db_session: AsyncSession, settings: Settings
+    client: AsyncClient, db_session: AsyncSession, settings: Settings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    proof_settings = settings.model_copy(update={"PROOF_CHAIN_ENABLED": True, "PROOF_DIGEST_SECRET": "test-only-secret-" * 4})
+    monkeypatch.setattr("dogeapi.proof.service.get_settings", lambda: proof_settings)
     base_headers, headers = await _register_and_switch(client)
     today = datetime.now(UTC).date()
     period_start = today.replace(day=1)
@@ -379,6 +382,13 @@ async def test_complete_mvp_workflow_is_tenant_scoped(
         headers=headers,
     )
     assert stored.status_code == 201, stored.text
+    stored_proof = await db_session.scalar(
+        select(CollateralProof).where(CollateralProof.application_id == application_id, CollateralProof.event_type == "stored")
+    )
+    assert stored_proof is not None and stored_proof.status == "pending"
+    listed_proofs = await client.get(f"/v1/proofs?application_id={application_id}", headers=headers)
+    assert listed_proofs.status_code == 200 and len(listed_proofs.json()) == 1
+    assert "payload" not in listed_proofs.json()[0] and "salt" not in listed_proofs.json()[0]
     stock_check = await client.post(
         "/v1/inventory-checks",
         json={"location_id": location.json()["id"]},
@@ -519,6 +529,12 @@ async def test_complete_mvp_workflow_is_tenant_scoped(
         headers=headers,
     )
     assert dispatched.status_code == 200, dispatched.text
+    dispatch_proof = await db_session.scalar(
+        select(CollateralProof).where(
+            CollateralProof.application_id == application_id, CollateralProof.event_type == "custody_dispatched"
+        )
+    )
+    assert dispatch_proof is not None and len(dispatch_proof.payload["evidence"]) == 1
     with pytest.raises(HTTPException) as same_receiver:
         await mvp_service.receive_custody_movement(
             db_session, application.org_id, actor.id, movement.json()["id"], "SEAL-001", "Received"
@@ -533,6 +549,12 @@ async def test_complete_mvp_workflow_is_tenant_scoped(
         "Segel cocok dan kondisi barang utuh",
     )
     assert received.status == "received"
+    receive_proof = await db_session.scalar(
+        select(CollateralProof).where(
+            CollateralProof.application_id == application_id, CollateralProof.event_type == "custody_moved"
+        )
+    )
+    assert receive_proof is not None and receive_proof.payload["event_type"] == "custody_moved"
     disbursed = await client.post(
         f"/v1/loans/{application_id}/disburse",
         json={"external_reference": "DISB-TEST-001", "idempotency_key": "disbursement-test-001"},

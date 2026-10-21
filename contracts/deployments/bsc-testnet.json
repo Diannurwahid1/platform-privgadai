@@ -1,0 +1,7 @@
+{
+  "network": "BNB Smart Chain Testnet",
+  "chainId": 97,
+  "contract": "CollateralProofRegistry",
+  "address": "0xad982f249ad9460a8f40b0306029228dc548fd4f",
+  "syntheticSmokeTransaction": "0x0817d72a377acf86ba4f8e2d386b3fb457e40d642887eb77a3c8ab4854a216b5"
+}

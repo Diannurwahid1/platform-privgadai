@@ -192,8 +192,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from dogeapi.operations.payment_router import router as payment_router
     from dogeapi.operations.public_router import router as public_operations_router
     from dogeapi.operations.router import router as operations_router
+    from dogeapi.proof.router import router as proof_router
 
     app.include_router(operations_router)
+    app.include_router(proof_router)
     app.include_router(approval_router)
     app.include_router(complaint_router)
     app.include_router(configuration_router)

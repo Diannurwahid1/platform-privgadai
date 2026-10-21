@@ -11,6 +11,7 @@ PrivGadai adalah aplikasi operasional pergadaian untuk PT Murah Gadai Jogja. Rep
 | `frontend/` | Next.js: login petugas, operasi mitra, dan portal borrower `/borrower`. |
 | `backend/` | FastAPI, SQLAlchemy/Alembic, PostgreSQL, tenant dan cabang, KYC, proses gadai, appraisal, kas, audit, serta API. |
 | `ocr_service/` | PaddleOCR internal untuk membaca KTP; hasil OCR tetap diperiksa petugas. |
+| `contracts/` | Registry bukti custody di BNB Smart Chain Testnet; kontrak dan uji Hardhat. |
 | `docs/enterprise/` | Audit, rancangan modul, kontrol, roadmap, dan runbook. |
 | `admin/` | Portal admin warisan fondasi; tidak diperlukan untuk alur borrower. |
 
@@ -46,6 +47,10 @@ API tersedia di `http://localhost:8000/docs`. `GET /healthz` untuk liveness; `GE
 ## Konfigurasi AI
 
 `BYNARA_API_KEY` dan `TAVILY_API_KEY` adalah variabel **server-side** di lingkungan backend. Bynara menangani analisis visual/penalaran; Tavily memasok beberapa pembanding harga pasar. Simpan kunci di secret manager atau environment server, jangan di file yang di-commit dan jangan memakai awalan `NEXT_PUBLIC_`. Nilai perkiraan dapat berubah setelah penaksiran manusia.
+
+## Proof of Custody BSC Testnet
+
+Event custody yang disahkan membuat snapshot bukti dan outbox dalam transaksi PostgreSQL yang sama. Worker menulis hanya referensi acak dan digest bersalt ke `CollateralProofRegistry`; UI Collateral Passport menampilkan status, tautan transaksi, serta verifikasi ulang terhadap snapshot privat dan nilai on-chain. Tidak ada tokenisasi barang atau alur pembayaran kripto. Cara deploy, pengujian, dan variabel rahasia ada di [`contracts/README.md`](contracts/README.md). Fitur ini tetap nonaktif sampai kontrak dan wallet testnet siap.
 
 ## Persiapan server
 

@@ -74,6 +74,7 @@ from dogeapi.operations.state_machine import (
     LOAN_TRANSITIONS,
     can_transition,
 )
+from dogeapi.proof.service import enqueue_custody_event
 from dogeapi.settings import get_settings
 
 
@@ -1006,7 +1007,7 @@ async def create_custody_event(
     _set_collateral_status(asset, data.event_type)
     item = CustodyEvent(org_id=org_id, actor_user_id=actor_id, **data.model_dump())
     session.add(item)
-    _add_collateral_event(
+    collateral_event = _add_collateral_event(
         session,
         org_id,
         data.application_id,
@@ -1017,6 +1018,7 @@ async def create_custody_event(
         {"location_id": str(location.id), "location": location.name},
     )
     await session.flush()
+    await enqueue_custody_event(session, collateral_event)
     return item
 
 
@@ -1160,7 +1162,7 @@ async def dispatch_custody_movement(
     item.dispatch_note = note
     item.dispatched_by_user_id = actor_id
     item.dispatched_at = datetime.now(UTC)
-    _add_collateral_event(
+    collateral_event = _add_collateral_event(
         session,
         org_id,
         item.application_id,
@@ -1171,6 +1173,7 @@ async def dispatch_custody_movement(
         {"movement_id": str(item.id), "seal": seal},
     )
     await session.flush()
+    await enqueue_custody_event(session, collateral_event)
     return item
 
 
@@ -1211,7 +1214,7 @@ async def receive_custody_movement(
             condition_note=note,
         )
     )
-    _add_collateral_event(
+    collateral_event = _add_collateral_event(
         session,
         org_id,
         item.application_id,
@@ -1222,6 +1225,7 @@ async def receive_custody_movement(
         {"movement_id": str(item.id), "seal": seal, "location_id": str(item.to_location_id)},
     )
     await session.flush()
+    await enqueue_custody_event(session, collateral_event)
     return item
 
 
@@ -1744,9 +1748,8 @@ def _add_collateral_event(
     title: str,
     description: str | None = None,
     event_metadata: dict[str, object] | None = None,
-) -> None:
-    session.add(
-        CollateralEvent(
+) -> CollateralEvent:
+    event = CollateralEvent(
             org_id=org_id,
             application_id=application_id,
             actor_user_id=actor_id,
@@ -1755,7 +1758,8 @@ def _add_collateral_event(
             description=description,
             event_metadata=event_metadata or {},
         )
-    )
+    session.add(event)
+    return event
 
 
 async def _flush_or_conflict(session: AsyncSession, message: str) -> None:

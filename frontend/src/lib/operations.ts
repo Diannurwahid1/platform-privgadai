@@ -510,6 +510,28 @@ export const transitionPickup = (pickupId: string, to_status: string) =>
 export const createCustodyEvent = (json: Record<string, unknown>) =>
   apiFetch<ActionResult>("/v1/custody/events", { method: "POST", json });
 export const listCustodyMovements = () => apiFetch<CustodyMovement[]>("/v1/custody/movements");
+export type CollateralProof = {
+  id: string;
+  application_id: string;
+  event_type: string;
+  status: string;
+  chain_id: number;
+  opaque_event_id: string;
+  digest: string;
+  tx_hash: string | null;
+  block_number: number | null;
+  confirmed_at: string | null;
+  explorer_url: string | null;
+};
+export type ProofVerification = CollateralProof & {
+  local_integrity: boolean;
+  chain_match: boolean;
+  chain_error: string | null;
+};
+export const listCollateralProofs = (applicationId?: string) =>
+  apiFetch<CollateralProof[]>(`/v1/proofs${applicationId ? `?application_id=${encodeURIComponent(applicationId)}` : ""}`);
+export const verifyCollateralProof = (id: string) =>
+  apiFetch<ProofVerification>(`/v1/proofs/${id}/verify`);
 export const requestCustodyMovement = (json: Record<string, unknown>) =>
   apiFetch<ActionResult>("/v1/custody/movements", { method: "POST", json });
 export const dispatchCustodyMovement = (id: string, seal_out: string, note: string) =>

@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ArrowLeftRight, ArrowRight, PackageCheck, ShieldCheck, Truck, Warehouse } from "lucide-react";
 import { ErrorState, LoadingState } from "@/components/page-state";
+import { ProofRegister } from "@/components/proof-register";
 import { dispatchCustodyMovement, listApplications, listCustodyLocations, listCustodyMovements, receiveCustodyMovement, requestCustodyMovement, uploadEvidence, type ApplicationQueueItem, type CustodyMovement, type MasterItem } from "@/lib/operations";
 
 const labels: Record<string, string> = {
@@ -54,6 +55,7 @@ export default function CollateralPage() {
       <div className="border-b border-border px-5 py-4"><h2 className="font-bold">Register agunan</h2><p className="mt-1 text-xs text-muted-foreground">Klik pengajuan untuk menjalankan pickup, custody, settlement, dan pengembalian.</p></div>
       <div className="divide-y divide-border">{items.map((item) => <Link key={item.id} href={`/orgs/${slug}/loans/applications/${item.id}`} className="flex flex-col gap-3 px-5 py-4 transition hover:bg-surface-soft sm:flex-row sm:items-center"><div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-surface-blue text-primary"><PackageCheck className="h-5 w-5" /></div><div className="min-w-0 flex-1"><p className="font-mono text-xs font-bold text-primary">{item.application_no}</p><p className="mt-1 truncate text-sm font-semibold">{item.asset_label}</p></div><div className="sm:text-right"><p className="text-xs font-bold">{labels[item.collateral_status] ?? item.collateral_status}</p><p className="mt-1 text-[11px] text-muted-foreground">{item.branch_code} · {item.borrower_name}</p></div><ArrowRight className="h-4 w-4 text-muted-foreground" /></Link>)}</div>
     </section>
+    <ProofRegister />
   </div>;
 }
 

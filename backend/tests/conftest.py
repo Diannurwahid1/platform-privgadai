@@ -97,6 +97,7 @@ def settings(request: pytest.FixtureRequest) -> Iterator[Settings]:
         DATABASE_URL_SYNC=TEST_DB_URL_SYNC,
         REDIS_URL=TEST_REDIS_URL,
         TOKEN_STORE_BACKEND="postgres",
+        PROOF_CHAIN_ENABLED=False,
         FEATURE_API_KEYS=overrides.get("api_keys", True),
         FEATURE_AUDIT_LOG=overrides.get("audit_log", False),
         FEATURE_RATE_LIMITING=overrides.get("rate_limiting", False),

@@ -1,0 +1,21 @@
+[Unit]
+Description=PrivGadai BSC Testnet custody proof relayer (staging)
+After=network-online.target postgresql.service privgadai-api.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/var/www/privgadai/backend
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/var/www/privgadai/backend/.venv/bin/python -m dogeapi.proof.worker
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+
+[Install]
+WantedBy=multi-user.target

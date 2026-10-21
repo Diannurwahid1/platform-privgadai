@@ -72,6 +72,14 @@ class Settings(BaseSettings):
     TAVILY_BASE_URL: str = "https://api.tavily.com"
     TAVILY_TIMEOUT_SECONDS: int = 18
 
+    PROOF_CHAIN_ENABLED: bool = False
+    PROOF_CHAIN_ID: int = 97
+    PROOF_RPC_URL: str = "https://bsc-testnet-dataseed.bnbchain.org"
+    PROOF_CONTRACT_ADDRESS: str = ""
+    PROOF_RELAYER_PRIVATE_KEY: str = ""
+    PROOF_DIGEST_SECRET: str = ""
+    PROOF_CONFIRMATIONS: int = 3
+
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3001"
 
     FEATURE_API_KEYS: bool = True
@@ -149,6 +157,13 @@ class Settings(BaseSettings):
         """Fail fast when production runs with placeholder or unsafe config."""
         if self.TOKEN_STORE_BACKEND == "postgres" and (self.FEATURE_RATE_LIMITING or self.FEATURE_AI_CHAT):
             raise ValueError("Redis is required for rate limiting and the template AI chat module")
+        if self.PROOF_CHAIN_ENABLED and (
+            self.PROOF_CHAIN_ID != 97
+            or len(self.PROOF_DIGEST_SECRET) < 32
+            or not self.PROOF_CONTRACT_ADDRESS
+            or not self.PROOF_RELAYER_PRIVATE_KEY
+        ):
+            raise ValueError("BSC Testnet proof service needs chain 97, digest secret, contract and relayer key")
         if self.is_production:
             if (
                 self.JWT_SECRET_KEY
