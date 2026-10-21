@@ -44,7 +44,7 @@ from dogeapi.operations.mvp_schemas import (
     StaffAssignmentItem,
     TransitionInput,
 )
-from dogeapi.operations.schemas import ApplicationQueueItem, OperationsDashboardResponse
+from dogeapi.operations.schemas import ApplicationQueueItem, BranchOverviewItem, OperationsDashboardResponse
 from dogeapi.security import require_scope
 
 router = APIRouter(
@@ -71,6 +71,7 @@ async def applications_inbox(
     org_id: OrgIdDep,
     user: UserDep,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    branch_id: UUID | None = None,
 ) -> list[ApplicationQueueItem]:
     branch_ids = await mvp_service.visible_branch_ids(
         session,
@@ -78,7 +79,18 @@ async def applications_inbox(
         user.id,
         {"ops_admin", "branch_manager", "loan_officer", "reviewer", "appraiser", "custodian", "finance", "auditor"},
     )
-    return await service.list_application_queue(session, org_id, limit=limit, branch_ids=branch_ids)
+    return await service.list_application_queue(session, org_id, limit=limit, branch_ids=branch_ids, branch_id=branch_id)
+
+
+@router.get("/operations/branches", response_model=list[BranchOverviewItem])
+async def operations_branches(session: SessionDep, org_id: OrgIdDep, user: UserDep) -> list[BranchOverviewItem]:
+    branch_ids = await mvp_service.visible_branch_ids(
+        session,
+        org_id,
+        user.id,
+        {"ops_admin", "branch_manager", "loan_officer", "reviewer", "appraiser", "custodian", "finance", "auditor"},
+    )
+    return await service.list_branch_overview(session, org_id, branch_ids=branch_ids)
 
 
 @router.get("/field/tasks", response_model=list[FieldTaskItem])

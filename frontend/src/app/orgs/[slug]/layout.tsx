@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 import type { ApiError } from "@/lib/api";
 import { OrgContextProvider, useOrgContext } from "@/lib/org-context";
 import { switchOrg } from "@/lib/orgs";
-import { listApplications, listCustomers, type ApplicationQueueItem, type CustomerListItem } from "@/lib/operations";
+import { listApplications, listBranchOverview, listCustomers, type ApplicationQueueItem, type BranchOverviewItem, type CustomerListItem } from "@/lib/operations";
 import { buildPartnerNavigation, isPartnerNavItemActive } from "@/lib/partner-navigation";
 
 function OrgChrome({ children }: { children: ReactNode }) {
@@ -28,6 +28,10 @@ function OrgChrome({ children }: { children: ReactNode }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchResults, setSearchResults] = useState<{ customers: CustomerListItem[]; applications: ApplicationQueueItem[] }>({ customers: [], applications: [] });
+  const [branchMenuOpen, setBranchMenuOpen] = useState(false);
+  const [branches, setBranches] = useState<BranchOverviewItem[] | null>(null);
+  const [branchError, setBranchError] = useState<string | null>(null);
+  const branchMenuRef = useRef<HTMLDivElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const navGroups = useMemo(() => buildPartnerNavigation(slug), [slug]);
   const activeGroup = navGroups.find((group) => group.items.some((item) => isPartnerNavItemActive(item, pathname)))?.id;
@@ -43,8 +47,23 @@ function OrgChrome({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setMobileOpen(false);
+    setBranchMenuOpen(false);
     if (activeGroup) setOpenGroups((current) => new Set([...current, activeGroup]));
   }, [pathname, activeGroup]);
+
+  useEffect(() => {
+    if (!org?.id) return;
+    listBranchOverview().then((items) => { setBranches(items); setBranchError(null); })
+      .catch((reason: ApiError) => setBranchError(reason.detail ?? "Daftar cabang gagal dimuat"));
+  }, [org?.id]);
+
+  useEffect(() => {
+    function closeMenu(event: PointerEvent) {
+      if (branchMenuRef.current && !branchMenuRef.current.contains(event.target as Node)) setBranchMenuOpen(false);
+    }
+    document.addEventListener("pointerdown", closeMenu);
+    return () => document.removeEventListener("pointerdown", closeMenu);
+  }, []);
 
   useEffect(() => {
     function onShortcut(event: KeyboardEvent) {
@@ -53,7 +72,7 @@ function OrgChrome({ children }: { children: ReactNode }) {
         searchInput.current?.focus();
         setSearchOpen(true);
       }
-      if (event.key === "Escape") setSearchOpen(false);
+      if (event.key === "Escape") { setSearchOpen(false); setBranchMenuOpen(false); }
     }
     window.addEventListener("keydown", onShortcut);
     return () => window.removeEventListener("keydown", onShortcut);
@@ -114,11 +133,11 @@ function OrgChrome({ children }: { children: ReactNode }) {
         )}
       </div>
       <div className={cn("border-b border-white/10", collapsed ? "px-2 py-3" : "px-3 py-3")}>
-        <button type="button" title={collapsed ? `${org.name} · Semua cabang` : undefined} className={cn("flex w-full items-center rounded-xl border border-white/10 bg-white/6 text-left transition hover:bg-white/10", collapsed ? "justify-center p-2.5" : "gap-3 px-3 py-3")}>
+        <Link href={`/orgs/${slug}/branches`} title={collapsed ? `${org.name} · Lihat cabang` : undefined} className={cn("flex w-full items-center rounded-xl border border-white/10 bg-white/6 text-left transition hover:bg-white/10", collapsed ? "justify-center p-2.5" : "gap-3 px-3 py-3")}>
           <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-blue-400/15 text-blue-300"><Building2 className="h-4 w-4" /></span>
-          {!collapsed && <span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold">{org.name}</span><span className="mt-0.5 block truncate text-[10px] text-slate-400">Semua cabang · Pilot</span></span>}
-          {!collapsed && <ChevronDown className="h-3.5 w-3.5 text-slate-500" />}
-        </button>
+          {!collapsed && <span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold">{org.name}</span><span className="mt-0.5 block truncate text-[10px] text-slate-400">Lihat {branches?.length ?? ""} cabang</span></span>}
+          {!collapsed && <ChevronRight className="h-3.5 w-3.5 text-slate-500" />}
+        </Link>
       </div>
       <nav className="pg-sidebar-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 py-3" aria-label="Navigasi utama">
         {navGroups.map((group) => {
@@ -160,7 +179,16 @@ function OrgChrome({ children }: { children: ReactNode }) {
           {collapsed && <button type="button" onClick={toggleCollapsed} aria-label="Perluas sidebar" title="Perluas sidebar" className="hidden h-9 w-9 place-items-center rounded-lg border border-border bg-surface text-muted-foreground hover:text-primary lg:grid"><ChevronRight className="h-4 w-4" /></button>}
           <div className="relative hidden max-w-xl flex-1 md:block"><Search className="absolute left-3 top-5 z-10 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><input ref={searchInput} value={globalQuery} onChange={(event) => { setGlobalQuery(event.target.value); setSearchOpen(true); }} onFocus={() => setSearchOpen(true)} aria-label="Cari data operasional" placeholder="Cari debitur, pengajuan, kontrak, atau agunan…" className="h-10 w-full rounded-xl border border-border bg-surface pl-10 pr-16 text-sm outline-none transition focus:border-primary/50 focus:ring-4 focus:ring-primary/8" /><kbd className="absolute right-3 top-5 -translate-y-1/2 rounded border border-border bg-surface-soft px-1.5 py-0.5 text-[10px] text-muted-foreground">Ctrl K</kbd>{searchOpen && globalQuery.trim().length >= 2 && <div className="absolute left-0 right-0 top-12 z-50 overflow-hidden rounded-2xl border border-border bg-surface shadow-[var(--pg-shadow-lg)]"><div className="border-b border-border px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Hasil pencarian lintas modul</div>{searchLoading ? <p className="px-4 py-6 text-center text-xs text-muted-foreground">Mencari…</p> : <div className="max-h-[420px] overflow-y-auto">{searchResults.customers.map((item) => <Link key={`customer-${item.id}`} onClick={() => setSearchOpen(false)} href={`/orgs/${slug}/customers/${item.id}`} className="flex items-center gap-3 border-b border-border/60 px-4 py-3 hover:bg-surface-soft"><ContactRound className="h-4 w-4 text-primary" /><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{item.full_name}</span><span className="block font-mono text-[10px] text-muted-foreground">{item.customer_reference} · Debitur</span></span></Link>)}{searchResults.applications.map((item) => <Link key={`application-${item.id}`} onClick={() => setSearchOpen(false)} href={`/orgs/${slug}/loans/applications/${item.id}`} className="flex items-center gap-3 border-b border-border/60 px-4 py-3 last:border-0 hover:bg-surface-soft"><ClipboardList className="h-4 w-4 text-primary" /><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{item.application_no} · {item.borrower_name}</span><span className="block truncate text-[10px] text-muted-foreground">{item.asset_label} · Pengajuan</span></span></Link>)}{!searchResults.customers.length && !searchResults.applications.length && <p className="px-4 py-6 text-center text-xs text-muted-foreground">Tidak ada data yang cocok.</p>}</div>}</div>}</div>
           <div className="ml-auto flex items-center gap-2">
-            <div aria-label="Cakupan cabang aktif" className="hidden h-10 items-center gap-2 rounded-xl border border-border bg-surface px-3 text-xs font-semibold text-muted-foreground shadow-[var(--pg-shadow-sm)] sm:flex"><SlidersHorizontal className="h-4 w-4" /> Semua cabang</div>
+            <div ref={branchMenuRef} className="relative hidden sm:block">
+              <button type="button" onClick={() => setBranchMenuOpen((open) => !open)} aria-expanded={branchMenuOpen} aria-haspopup="menu" className="flex h-10 items-center gap-2 rounded-xl border border-border bg-surface px-3 text-xs font-semibold text-foreground shadow-[var(--pg-shadow-sm)] transition hover:border-primary/40 hover:text-primary"><SlidersHorizontal className="h-4 w-4" /> Cabang <ChevronDown className={cn("h-3.5 w-3.5 transition", branchMenuOpen && "rotate-180")} /></button>
+              {branchMenuOpen && <div role="menu" aria-label="Daftar cabang" className="absolute right-0 top-12 z-50 w-[min(380px,calc(100vw-32px))] overflow-hidden rounded-2xl border border-border bg-surface p-2 shadow-[var(--pg-shadow-lg)]">
+                <div className="border-b border-border px-3 pb-2 pt-1"><p className="text-xs font-bold">Cabang {org.name}</p><p className="mt-1 text-[11px] text-muted-foreground">Pilih cabang untuk melihat ringkasan operasionalnya.</p></div>
+                {branches?.map((branch, index) => <Link role="menuitem" key={branch.id} href={`/orgs/${slug}/branches/${branch.id}`} onClick={() => setBranchMenuOpen(false)} className="flex items-start gap-3 rounded-xl px-3 py-3 transition hover:bg-surface-soft"><span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-surface-blue text-xs font-bold text-primary">{index + 1}</span><span className="min-w-0 flex-1"><span className="block text-xs font-semibold leading-5">{branch.name}</span><span className="mt-0.5 block text-[11px] text-muted-foreground">{branch.application_count} pengajuan · {branch.staff_count} petugas{org.slug === "murah-gadai-jogja" && branch.code === "01-UAD-K4" ? " · Utama" : ""}</span></span></Link>)}
+                {!branches && <p className="px-3 py-4 text-xs text-muted-foreground">{branchError ?? "Memuat cabang…"}</p>}
+                {branches?.length === 0 && <p className="px-3 py-4 text-xs text-muted-foreground">Belum ada cabang yang dapat diakses.</p>}
+                <Link role="menuitem" href={`/orgs/${slug}/branches`} onClick={() => setBranchMenuOpen(false)} className="mt-1 block rounded-xl border-t border-border px-3 py-3 text-xs font-bold text-primary hover:bg-surface-soft">Lihat semua cabang →</Link>
+              </div>}
+            </div>
             <div className="hidden items-center gap-2 rounded-xl border border-border bg-surface py-1.5 pl-1.5 pr-3 shadow-[var(--pg-shadow-sm)] xl:flex"><span className="grid h-8 w-8 place-items-center rounded-lg bg-surface-blue text-xs font-bold text-primary">{(user.full_name ?? user.email).slice(0, 2).toUpperCase()}</span><span><span className="block max-w-36 truncate text-xs font-semibold">{user.full_name ?? "Operator Mitra"}</span><span className="block text-[10px] capitalize text-muted-foreground">{org.role}</span></span></div>
           </div>
         </div>

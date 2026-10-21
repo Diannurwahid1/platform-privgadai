@@ -18,6 +18,15 @@ class BranchSummary(BaseModel):
     is_active: bool
 
 
+class BranchOverviewItem(BranchSummary):
+    address: str | None
+    application_count: int
+    requested_amount: float
+    staff_count: int
+    cashbox_count: int
+    custody_location_count: int
+
+
 class OperationsMetrics(BaseModel):
     submitted: int
     under_review: int

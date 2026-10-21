@@ -9,15 +9,75 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from dogeapi.models import ApplicationStatusHistory, Asset, Borrower, Branch, LoanApplication
+from dogeapi.models import (
+    ApplicationStatusHistory,
+    Asset,
+    Borrower,
+    Branch,
+    Cashbox,
+    CustodyLocation,
+    LoanApplication,
+    StaffAssignment,
+)
 from dogeapi.operations.schemas import (
     ActivityItem,
     ApplicationQueueItem,
+    BranchOverviewItem,
     BranchSummary,
     CollateralStatusItem,
     OperationsDashboardResponse,
     OperationsMetrics,
 )
+
+
+async def list_branch_overview(
+    session: AsyncSession, org_id: UUID, *, branch_ids: set[UUID] | None = None
+) -> list[BranchOverviewItem]:
+    query = select(Branch).where(Branch.org_id == org_id).order_by(Branch.code)
+    if branch_ids is not None:
+        query = query.where(Branch.id.in_(branch_ids))
+    branches = (await session.scalars(query)).all()
+    result: list[BranchOverviewItem] = []
+    for branch in branches:
+        application_count, requested_amount = (
+            await session.execute(
+                select(
+                    func.count(LoanApplication.id),
+                    func.coalesce(func.sum(LoanApplication.requested_amount), Decimal("0")),
+                ).where(LoanApplication.org_id == org_id, LoanApplication.branch_id == branch.id)
+            )
+        ).one()
+        staff_count = await session.scalar(
+            select(func.count(StaffAssignment.id)).where(
+                StaffAssignment.org_id == org_id,
+                StaffAssignment.branch_id == branch.id,
+                StaffAssignment.is_active,
+            )
+        )
+        cashbox_count = await session.scalar(
+            select(func.count(Cashbox.id)).where(Cashbox.org_id == org_id, Cashbox.branch_id == branch.id)
+        )
+        custody_location_count = await session.scalar(
+            select(func.count(CustodyLocation.id)).where(
+                CustodyLocation.org_id == org_id, CustodyLocation.branch_id == branch.id
+            )
+        )
+        result.append(
+            BranchOverviewItem(
+                id=branch.id,
+                code=branch.code,
+                name=branch.name,
+                city=branch.city,
+                address=branch.address,
+                is_active=branch.is_active,
+                application_count=int(application_count),
+                requested_amount=float(requested_amount),
+                staff_count=int(staff_count or 0),
+                cashbox_count=int(cashbox_count or 0),
+                custody_location_count=int(custody_location_count or 0),
+            )
+        )
+    return result
 
 
 async def list_application_queue(
@@ -26,6 +86,7 @@ async def list_application_queue(
     *,
     limit: int = 20,
     branch_ids: set[UUID] | None = None,
+    branch_id: UUID | None = None,
 ) -> list[ApplicationQueueItem]:
     statement = (
         select(LoanApplication, Borrower, Branch, Asset)
@@ -43,6 +104,8 @@ async def list_application_queue(
     )
     if branch_ids is not None:
         statement = statement.where(LoanApplication.branch_id.in_(branch_ids))
+    if branch_id is not None:
+        statement = statement.where(LoanApplication.branch_id == branch_id)
     rows = (await session.execute(statement)).all()
     return [
         ApplicationQueueItem(

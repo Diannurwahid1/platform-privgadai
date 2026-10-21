@@ -44,6 +44,7 @@ export function buildPartnerNavigation(slug: string): PartnerNavGroup[] {
     { id: "overview", label: "Overview", items: [
       { id: "onboarding", label: "Mulai Operasi", href: `${root}/onboarding`, icon: ListChecks, match: "section" },
       { id: "overview", label: "Ringkasan", href: `${root}/overview`, aliases: [root], icon: LayoutDashboard, match: "exact" },
+      { id: "branches", label: "Cabang", href: `${root}/branches`, icon: Building2, match: "section" },
     ] },
     { id: "customers", label: "Customers", items: [
       { id: "customers", label: "Debitur & CRM", href: `${root}/customers`, icon: ContactRound, match: "section", excludes: [`${root}/customers/kyc`] },

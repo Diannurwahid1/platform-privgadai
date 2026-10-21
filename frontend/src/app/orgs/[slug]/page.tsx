@@ -253,14 +253,16 @@ export default function PartnerOperationsDashboard() {
             dari satu ruang kerja yang dapat diaudit.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {dashboard.branches.map((branch, index) => (
-            <button
+        <div className="flex max-w-xl flex-wrap gap-2">
+          {dashboard.branches.map((branch) => (
+            <Link
               key={branch.id}
-              className={`rounded-full border px-3 py-2 text-xs font-semibold transition ${index === 0 ? "border-primary bg-primary text-white" : "border-border bg-surface text-muted-foreground hover:border-primary/40"}`}
+              href={`/orgs/${org?.slug}/branches/${branch.id}`}
+              title={`Buka detail ${branch.name}`}
+              className="rounded-full border border-border bg-surface px-3 py-2 text-xs font-semibold text-foreground transition hover:border-primary/40 hover:bg-surface-blue hover:text-primary"
             >
-              {branch.code}
-            </button>
+              {branch.name.replace(/^Gadai Murah Jogja \u2013 /, "")}
+            </Link>
           ))}
         </div>
       </section>

@@ -48,13 +48,14 @@ async def test_dashboard_uses_real_tenant_scoped_operations_data(
     org_id, scoped_headers = await _create_and_switch(client, base_headers, name="Mitra Gadai Demo", slug="mitra-demo")
 
     branch = Branch(org_id=org_id, code="JKT-01", name="Cabang Jakarta", city="Jakarta")
+    empty_branch = Branch(org_id=org_id, code="JKT-02", name="Cabang Kedua", city="Jakarta")
     borrower = Borrower(
         org_id=org_id,
         customer_reference="BRW-001",
         full_name="Nasabah Sintetis",
         phone_masked="08•• •••• 1001",
     )
-    db_session.add_all([branch, borrower])
+    db_session.add_all([branch, empty_branch, borrower])
     await db_session.flush()
 
     application = LoanApplication(
@@ -105,6 +106,18 @@ async def test_dashboard_uses_real_tenant_scoped_operations_data(
     assert body["work_queue"][0]["borrower_name"] == "Nasabah Sintetis"
     assert body["recent_activity"][0]["to_status"] == "appraisal"
 
+    branch_response = await client.get("/v1/operations/branches", headers=scoped_headers)
+    assert branch_response.status_code == 200, branch_response.text
+    branch_rows = branch_response.json()
+    assert [(row["code"], row["application_count"]) for row in branch_rows] == [
+        ("JKT-01", 1), ("JKT-02", 0)
+    ]
+    assert branch_rows[0]["requested_amount"] == 7_500_000
+    assert branch_rows[1]["staff_count"] == 0
+    filtered = await client.get(f"/v1/applications?branch_id={empty_branch.id}", headers=scoped_headers)
+    assert filtered.status_code == 200
+    assert filtered.json() == []
+
     customer = await client.get(f"/v1/customers/{borrower.id}", headers=scoped_headers)
     assert customer.status_code == 200, customer.text
     customer_body = customer.json()
@@ -122,6 +135,9 @@ async def test_dashboard_uses_real_tenant_scoped_operations_data(
     assert isolated.status_code == 200
     assert isolated.json()["metrics"]["appraisal"] == 0
     assert isolated.json()["work_queue"] == []
+    isolated_branches = await client.get("/v1/operations/branches", headers=other_scoped_headers)
+    assert isolated_branches.status_code == 200
+    assert isolated_branches.json() == []
     isolated_customer = await client.get(f"/v1/customers/{borrower.id}", headers=other_scoped_headers)
     assert isolated_customer.status_code == 404
     isolated_events = await client.get("/v1/domain-events", headers=other_scoped_headers)

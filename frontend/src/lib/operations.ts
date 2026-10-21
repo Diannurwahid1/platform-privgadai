@@ -9,6 +9,15 @@ export type BranchSummary = {
   is_active: boolean;
 };
 
+export type BranchOverviewItem = BranchSummary & {
+  address: string | null;
+  application_count: number;
+  requested_amount: number;
+  staff_count: number;
+  cashbox_count: number;
+  custody_location_count: number;
+};
+
 export type OperationsMetrics = {
   submitted: number;
   under_review: number;
@@ -62,8 +71,11 @@ export type OperationsDashboard = {
 export const getOperationsDashboard = () =>
   apiFetch<OperationsDashboard>("/v1/operations/dashboard");
 
-export const listApplications = (limit = 50) =>
-  apiFetch<ApplicationQueueItem[]>(`/v1/applications?limit=${limit}`);
+export const listBranchOverview = () =>
+  apiFetch<BranchOverviewItem[]>("/v1/operations/branches");
+
+export const listApplications = (limit = 50, branchId?: string) =>
+  apiFetch<ApplicationQueueItem[]>(`/v1/applications?limit=${limit}${branchId ? `&branch_id=${encodeURIComponent(branchId)}` : ""}`);
 
 export type MasterItem = {
   id: string;
