@@ -1,0 +1,8 @@
+{
+  "chainId": 97,
+  "network": "bsc-testnet",
+  "contract": "PawnAgreementEvidenceRegistry",
+  "address": "0xa90f0d609ca697cdc1c22fe2cc1b73dca9774abb",
+  "registrar": "0x07f85395c467460f52cf5f241aeb7f582082d9c1",
+  "smokeTestTransaction": "0xb4a1b12735c0725ba74897c3be794b83210fa5f90a63b4c3b0a8642081bae1e0"
+}
