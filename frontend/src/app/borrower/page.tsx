@@ -45,13 +45,13 @@ export default function BorrowerHome() {
   if (loading) return <Shell><main className={s.main}>Membuka portal borrower…</main></Shell>;
 
   if (!me) return <Shell><div className={s.authWrap}>
-    <section className={s.authVisual}><span className={s.eyebrow}>PT MURAH GADAI JOGJA</span>
+    <section className={s.authVisual}><span className={s.eyebrow}>PT GADAI MURAH JOGJA</span>
       <h1>Gadai privat.<br />Dana lebih dekat.</h1>
       <p>Unggah foto barang, lihat estimasi awal, dan ikuti keputusan petugas dalam satu tempat.</p>
       <Mascot /></section>
     <section className={s.authPane}><form className={s.authForm} onSubmit={submitAuth}>
       <h2>{mode === "login" ? "Selamat datang kembali" : "Mulai bersama PrivGadai"}</h2>
-      <p>{mode === "login" ? "Masuk ke akun borrower Anda. Akun petugas memakai portal terpisah." : "Daftar untuk mengajukan gadai ke PT Murah Gadai Jogja."}</p>
+      <p>{mode === "login" ? "Masuk ke akun borrower Anda. Akun petugas memakai portal terpisah." : "Daftar untuk mengajukan gadai ke PT Gadai Murah Jogja."}</p>
       {mode === "register" && <><label className={s.field}><span>Nama lengkap sesuai KTP</span><input required minLength={2} value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Nama lengkap" /></label>
         <label className={s.field}><span>Nomor ponsel</span><input required minLength={8} type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="08…" /></label></>}
       <label className={s.field}><span>Email</span><input required type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="nama@email.com" /></label>

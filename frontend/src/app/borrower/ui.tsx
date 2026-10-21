@@ -38,7 +38,7 @@ export function Mascot({ className = "" }: { className?: string }) {
   return <Image src="/brand/privgadai-mascot-wave.png" alt="Maskot robot PrivGadai menyapa" width={500} height={755} className={className} priority />;
 }
 
-export function Footer() { return <footer className={s.footer}>PrivGadai · Layanan PT Murah Gadai Jogja · Estimasi awal selalu ditinjau petugas.</footer>; }
+export function Footer() { return <footer className={s.footer}>PrivGadai · Layanan PT Gadai Murah Jogja · Estimasi awal selalu ditinjau petugas.</footer>; }
 
 export function ErrorBox({ message }: { message: string | null }) { return message ? <div role="alert" className={s.error}>{message}</div> : null; }
 

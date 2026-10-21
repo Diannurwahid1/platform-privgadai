@@ -1,6 +1,6 @@
 # PrivGadai
 
-PrivGadai adalah aplikasi operasional pergadaian untuk PT Murah Gadai Jogja. Repository ini memuat portal nasabah, workspace petugas, API, dan layanan OCR KTP. Fondasinya berasal dari `ai-template-main`; alur pinjaman dan agunan disesuaikan dengan blueprint PrivGadai di [`docs/enterprise`](docs/enterprise/README.md).
+PrivGadai adalah aplikasi operasional pergadaian untuk PT Gadai Murah Jogja. Repository ini memuat portal nasabah, workspace petugas, API, dan layanan OCR KTP. Fondasinya berasal dari `ai-template-main`; alur pinjaman dan agunan disesuaikan dengan blueprint PrivGadai di [`docs/enterprise`](docs/enterprise/README.md).
 
 **Status:** pilot internal. Kode ini belum merupakan bukti kesiapan produksi atau persetujuan format pelaporan regulator. Gerbang rilis dan pekerjaan operasional yang harus dibuktikan tercatat di [runbook production readiness](docs/enterprise/09-production-readiness.md).
 
@@ -56,7 +56,7 @@ Event custody yang disahkan membuat snapshot bukti dan outbox dalam transaksi Po
 
 Pilot server saat ini dapat diakses di [app.privgadai.web.id](https://app.privgadai.web.id). Nginx meneruskan HTTPS ke frontend privat `127.0.0.1:2038`; frontend meneruskan `/api/backend/*` ke API privat `127.0.0.1:2039`. Contoh virtual host ada di [`deploy/nginx/app.privgadai.web.id.conf`](deploy/nginx/app.privgadai.web.id.conf). Sertifikat Let's Encrypt memakai webroot `/var/www/letsencrypt`; pasang [`deploy/nginx/certbot-deploy-hook.sh`](deploy/nginx/certbot-deploy-hook.sh) sebagai hook deploy Certbot agar Nginx memuat sertifikat yang diperbarui.
 
-Deployment pilot ini masih menjalankan `APP_ENV=staging` dengan database baru. Akun petugas, organisasi PT Murah Gadai Jogja, cabang, produk, dan master data harus disiapkan sebelum alur borrower dapat digunakan. Status tersebut tidak mengubah gerbang kesiapan produksi di runbook.
+Deployment pilot ini masih menjalankan `APP_ENV=staging`. Akun petugas, organisasi PT Gadai Murah Jogja, cabang, produk, dan master data disiapkan di lingkungan ini. Status tersebut tidak mengubah gerbang kesiapan produksi di runbook.
 
 1. Siapkan PostgreSQL, TLS/reverse proxy, penyimpanan privat untuk bukti dan KTP, secret manager, backup yang telah diuji restore, serta process manager untuk backend, frontend, dan OCR bila diaktifkan.
 2. Set environment produksi sesuai [runbook](docs/enterprise/09-production-readiness.md). Backend mewajibkan `APP_ENV=production`, `BUILD_SHA` rilis, secret JWT kuat, `PII_ENCRYPTION_KEY`, cookie aman, ClamAV, dan MFA untuk operasi sensitif. Set `INTERNAL_API_BASE_URL` di proses frontend ke alamat backend privat; URL publik dan CORS harus sesuai domain HTTPS.

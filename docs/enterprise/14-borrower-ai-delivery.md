@@ -1,6 +1,6 @@
 # Implementasi portal borrower dan appraisal berbantuan AI
 
-Status per 18 Oktober 2026. Scope implementasi aktif adalah **PT Murah Gadai Jogja** dan borrower. Slug teknis tenant dev tetap `denjaka-2` agar tautan staf lama tidak putus. Portal pendana pada rencana sebelumnya tidak dikerjakan dalam slice ini.
+Status per 18 Oktober 2026. Scope implementasi aktif adalah **PT Gadai Murah Jogja** dan borrower. Slug teknis tenant dev tetap `denjaka-2` agar tautan staf lama tidak putus. Portal pendana pada rencana sebelumnya tidak dikerjakan dalam slice ini.
 
 **Pembaruan 19 Oktober 2026:** langkah estimator lokal pada catatan historis di bawah telah diganti oleh riset harga Tavily dan sintesis `step-5-preview`. Data demo lokal tidak lagi dipakai untuk angka borrower. Alur, syarat sumber, dan hasil uji terbaru dicatat di [Riset harga langsung](./15-live-market-research.md).
 
