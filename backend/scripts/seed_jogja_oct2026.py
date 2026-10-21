@@ -104,7 +104,7 @@ SCENARIOS = (
         12_000_000,
         17_400_000,
         "under_review",
-        1,
+        0,
         "Modal kerja",
     ),
     Scenario(
@@ -149,7 +149,7 @@ SCENARIOS = (
         8_000_000,
         5_600_000,
         "rejected",
-        1,
+        0,
         "Kebutuhan mendesak",
     ),
     Scenario(
@@ -164,7 +164,7 @@ SCENARIOS = (
         6_000_000,
         9_500_000,
         "offered",
-        1,
+        0,
         "Modal produksi",
     ),
     Scenario(
@@ -194,7 +194,7 @@ SCENARIOS = (
         7_000_000,
         11_200_000,
         "submitted",
-        1,
+        0,
         "Modal kerja",
     ),
     Scenario(
@@ -224,7 +224,7 @@ SCENARIOS = (
         5_500_000,
         8_800_000,
         "submitted",
-        1,
+        0,
         "Modal usaha",
     ),
     Scenario(
@@ -254,7 +254,7 @@ SCENARIOS = (
         4_500_000,
         7_200_000,
         "under_review",
-        1,
+        0,
         "Modal produksi",
     ),
 )
@@ -298,18 +298,42 @@ async def seed(*, dry_run: bool) -> None:
         branches = [
             Branch(
                 org_id=org.id,
-                code="YK-01",
-                name="Cabang Kota Yogyakarta",
-                city="Yogyakarta",
-                address="Area Kotabaru, Kota Yogyakarta; alamat rinci perlu dikonfirmasi",
+                code="01-UAD-K4",
+                name="Gadai Murah Jogja \u2013 Cabang UAD Kampus 4 (Tamanan)",
+                city="DI Yogyakarta",
+                address=None,
                 created_at=master_at,
             ),
             Branch(
                 org_id=org.id,
-                code="YK-02",
-                name="Cabang Sleman",
-                city="Sleman",
-                address="Area Depok, Kabupaten Sleman; alamat rinci perlu dikonfirmasi",
+                code="02-UMY",
+                name="Gadai Murah Jogja \u2013 Cabang UMY",
+                city="DI Yogyakarta",
+                address=None,
+                created_at=master_at,
+            ),
+            Branch(
+                org_id=org.id,
+                code="03-KASONGAN",
+                name="Gadai Murah Jogja \u2013 Cabang Kasongan",
+                city="DI Yogyakarta",
+                address=None,
+                created_at=master_at,
+            ),
+            Branch(
+                org_id=org.id,
+                code="04-PLERET",
+                name="Gadai Murah Jogja \u2013 Cabang Pleret",
+                city="DI Yogyakarta",
+                address=None,
+                created_at=master_at,
+            ),
+            Branch(
+                org_id=org.id,
+                code="05-WIYORO",
+                name="Gadai Murah Jogja \u2013 Cabang Wiyoro",
+                city="DI Yogyakarta",
+                address=None,
                 created_at=master_at,
             ),
         ]
@@ -358,7 +382,7 @@ async def seed(*, dry_run: bool) -> None:
         session.add_all(products)
         await session.flush()
 
-        for branch in branches:
+        for branch in branches[:1]:
             session.add(
                 CustodyLocation(
                     org_id=org.id,
@@ -379,7 +403,7 @@ async def seed(*, dry_run: bool) -> None:
                     org_id=org.id, user_id=operator.id, branch_id=branches[0].id, operational_role="reviewer"
                 ),
                 StaffAssignment(
-                    org_id=org.id, user_id=operator.id, branch_id=branches[1].id, operational_role="branch_manager"
+                    org_id=org.id, user_id=operator.id, branch_id=branches[0].id, operational_role="branch_manager"
                 ),
             ]
         )
