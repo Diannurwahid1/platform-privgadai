@@ -1,6 +1,16 @@
 # Bukti perjanjian gadai dan smart contract BNB Testnet
 
-Status: registry diuji lokal dan dideploy di BNB Testnet pada `0xa90f0d609ca697cdc1c22fe2cc1b73dca9774abb`. Transaksi sintetis `0xb4a1b12735c0725ba74897c3be794b83210fa5f90a63b4c3b0a8642081bae1e0` terkonfirmasi di blok `138024176`, dan dua digest terbaca kembali dengan benar. **Alur perjanjian operasional belum diaktifkan.** Kontrak ini tidak menggantikan Surat Bukti Gadai atau tanda tangan elektronik.
+Status: registry diuji lokal dan dideploy di BNB Testnet pada `0xa90f0d609ca697cdc1c22fe2cc1b73dca9774abb`. Transaksi sintetis `0xb4a1b12735c0725ba74897c3be794b83210fa5f90a63b4c3b0a8642081bae1e0` terkonfirmasi di blok `138024176`, dan dua digest terbaca kembali dengan benar. Alur **ringkasan penawaran dan persetujuan portal** kini terhubung ke registry melalui outbox. Ini belum merupakan SBG final atau tanda tangan elektronik tersertifikasi; kontrak tidak menggantikannya.
+
+## Implementasi yang berjalan
+
+- Borrower harus memiliki KYC verified. API memberi preview syarat dengan SHA-256; aksi setuju wajib membawa digest preview dan persetujuan eksplisit. Preview basi atau tanpa persetujuan ditolak.
+- Rekam privat menyimpan snapshot syarat, identitas sesi yang terautentikasi, kanal, waktu, IP yang terlihat server, user agent, salt, dan dua digest. Snapshot dan persetujuan dibuat dalam transaksi database yang sama dengan acceptance.
+- Relayer yang sudah berjalan untuk custody juga membaca antrian perjanjian. Ia mengirim dua digest tersalt ke registry, memantau konfirmasi, dan menyimpan transaksi/blok. Portal borrower dan staf bisa menjalankan pemeriksaan ulang lokal serta on-chain. Export JSON untuk paket bukti tersedia di borrower.
+- Paket JSON dapat diperiksa terpisah dari sesi portal memakai `backend/scripts/verify_agreement_export.py FILE.json`. Pemeriksa menghitung ulang dua digest dan membandingkannya dengan registry yang dipin ke alamat deployment resmi.
+- Jalur staf untuk menerima penawaran atas nama borrower ditutup. Pickup dan pencairan mensyaratkan persetujuan portal yang direkam. Kegagalan BNB tidak menghapus penerimaan yang sudah sah di database; status pending/failed tetap terlihat untuk tindak lanjut.
+
+Dokumen yang dihasilkan saat ini adalah **ringkasan syarat penawaran**, termasuk pihak, agunan, appraisal, dana, tenor, biaya, alasan keputusan, dan penjelasan proses. Klausul SBG final yang ditandatangani harus disetujui PT sebelum alur ini dipakai sebagai satu-satunya kontrak operasional.
 
 ## Mengapa diperlukan
 
@@ -24,7 +34,7 @@ Blueprint operasional bagian **Penawaran dan perjanjian** menuntut offer dengan 
 ## Gate sebelum mengaktifkan di aplikasi
 
 - [ ] PT menyetujui template SBG, klausul biaya/denda, dan pilihan forum sengketa untuk tiap produk. Tinjau terhadap POJK 39/2024 beserta perubahan POJK 29/2025.
-- [ ] Generator dokumen terversi dan preview byte-identik sebelum acceptance; snapshot biaya dan jadwal tidak berubah setelah offer diterbitkan.
+- [ ] Template SBG final yang disetujui PT dan generator PDF byte-identik dengan preview; snapshot ringkasan penawaran saja sudah berjalan.
 - [ ] Bukti persetujuan borrower terikat ke digest dokumen; integrasi tanda tangan elektronik/PSrE dan mekanisme verifikasi identitas penanda tangan.
 - [ ] Arsip immutable privat dengan retensi, akses per tenant, checksum, backup, dan export paket sengketa.
 - [ ] Transactional outbox untuk BNB, relayer dengan retry/idempotency/konfirmasi, monitoring, dan verifier independen; kegagalan chain tidak boleh mengubah isi perjanjian.

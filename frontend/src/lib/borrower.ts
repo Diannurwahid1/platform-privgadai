@@ -100,4 +100,29 @@ export type BorrowerDetail = BorrowerApplication & {
   offer: { id: string; principal_amount: number; tenor_days: number; service_fee_amount: number; total_due_amount: number; decision_reason: string | null; agreement_version: string; expires_at: string; status: string } | null;
   history: Array<{ status: string; note: string | null; at: string }>;
 };
+export type AgreementDocument = {
+  schema: string; document_number: string; document_version: string; offer_version: number;
+  application_number: string; issued_at: string; expires_at: string;
+  company: { name: string; branch: string; branch_address: string; branch_city: string };
+  borrower: { name: string; customer_reference: string };
+  collateral: { asset_code: string; category: string; brand: string; model: string; condition_grade: string };
+  valuation: { market_value_idr: string; liquidation_value_idr: string };
+  terms: {
+    principal_idr: string; tenor_days: number; service_fee_idr: string; total_due_idr: string;
+    requested_principal_idr: string; requested_tenor_days: number | null; decision_reason: string;
+    tenor_start: string; disbursement: string; late_fee: string; default_and_collateral: string; dispute: string;
+  };
+  notice: string;
+};
+export type AgreementPreview = { document: AgreementDocument; preview_sha256: string };
+export type AgreementRecord = {
+  id: string; sbg_number: string; document_version: string; status: string; accepted_at: string;
+  document_digest: string | null; consent_digest: string | null; chain_status: string;
+  chain_id: number; contract_address: string | null; tx_hash: string | null; block_number: number | null;
+  confirmed_at: string | null; explorer_url: string | null;
+  document_salt?: string | null; opaque_chain_id?: string | null;
+  document?: AgreementDocument | null;
+  consent?: { accepted_at: string; channel: string; signature_level: string } | null;
+};
+export type AgreementVerification = AgreementRecord & { local_integrity: boolean; chain_match: boolean; detail: string | null };
 export const money = (value: number | string | null | undefined) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(Number(value ?? 0));

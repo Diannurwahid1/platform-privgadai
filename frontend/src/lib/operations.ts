@@ -1,4 +1,5 @@
 import { apiDownload, apiFetch, apiUpload } from "@/lib/api";
+import type { AgreementRecord, AgreementVerification } from "@/lib/borrower";
 
 export type BranchSummary = {
   id: string;
@@ -532,6 +533,10 @@ export const listCollateralProofs = (applicationId?: string) =>
   apiFetch<CollateralProof[]>(`/v1/proofs${applicationId ? `?application_id=${encodeURIComponent(applicationId)}` : ""}`);
 export const verifyCollateralProof = (id: string) =>
   apiFetch<ProofVerification>(`/v1/proofs/${id}/verify`);
+export const getAgreementEvidence = (applicationId: string) =>
+  apiFetch<AgreementRecord>(`/v1/proofs/agreements/${applicationId}`);
+export const verifyAgreementEvidence = (applicationId: string) =>
+  apiFetch<AgreementVerification>(`/v1/proofs/agreements/${applicationId}/verify`);
 export const requestCustodyMovement = (json: Record<string, unknown>) =>
   apiFetch<ActionResult>("/v1/custody/movements", { method: "POST", json });
 export const dispatchCustodyMovement = (id: string, seal_out: string, note: string) =>

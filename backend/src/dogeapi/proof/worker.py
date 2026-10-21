@@ -11,6 +11,7 @@ from sqlalchemy import and_, case, or_, select
 from web3 import Web3
 from web3.exceptions import TransactionNotFound
 
+from dogeapi.agreement.worker import process_one as process_agreement
 from dogeapi.db import get_session_factory
 from dogeapi.models import CollateralProof
 from dogeapi.proof.service import PROOF_ABI, make_digest
@@ -135,6 +136,8 @@ async def run(once: bool) -> None:
     connect()
     while True:
         processed = await process_one()
+        if get_settings().AGREEMENT_CONTRACT_ADDRESS:
+            processed = await process_agreement() or processed
         if once:
             return
         await asyncio.sleep(4 if processed else 12)

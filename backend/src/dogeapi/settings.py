@@ -79,6 +79,7 @@ class Settings(BaseSettings):
     PROOF_RELAYER_PRIVATE_KEY: str = ""
     PROOF_DIGEST_SECRET: str = ""
     PROOF_CONFIRMATIONS: int = 3
+    AGREEMENT_CONTRACT_ADDRESS: str = ""
 
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3001"
 
@@ -164,6 +165,12 @@ class Settings(BaseSettings):
             or not self.PROOF_RELAYER_PRIVATE_KEY
         ):
             raise ValueError("BSC Testnet proof service needs chain 97, digest secret, contract and relayer key")
+        if self.AGREEMENT_CONTRACT_ADDRESS and (
+            (self.is_production and not self.PROOF_CHAIN_ENABLED)
+            or len(self.AGREEMENT_CONTRACT_ADDRESS) != 42
+            or not self.AGREEMENT_CONTRACT_ADDRESS.startswith("0x")
+        ):
+            raise ValueError("Agreement registry needs an enabled BSC Testnet relayer and contract address")
         if self.is_production:
             if (
                 self.JWT_SECRET_KEY

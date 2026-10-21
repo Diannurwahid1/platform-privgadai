@@ -62,6 +62,7 @@ async def test_complete_mvp_workflow_is_tenant_scoped(
 ) -> None:
     proof_settings = settings.model_copy(update={"PROOF_CHAIN_ENABLED": True, "PROOF_DIGEST_SECRET": "test-only-secret-" * 4})
     monkeypatch.setattr("dogeapi.proof.service.get_settings", lambda: proof_settings)
+    monkeypatch.setattr("dogeapi.agreement.service.get_settings", lambda: proof_settings.model_copy(update={"AGREEMENT_CONTRACT_ADDRESS": ""}))
     base_headers, headers = await _register_and_switch(client)
     today = datetime.now(UTC).date()
     period_start = today.replace(day=1)
@@ -352,11 +353,36 @@ async def test_complete_mvp_workflow_is_tenant_scoped(
     borrower_detail = await client.get(f"/borrower/v1/applications/{application_id}")
     assert borrower_detail.status_code == 200, borrower_detail.text
     assert borrower_detail.json()["offer"]["principal_amount"] == "7000000.00"
+    agreement_preview = await client.get(f"/borrower/v1/applications/{application_id}/agreement-preview")
+    assert agreement_preview.status_code == 200, agreement_preview.text
+    assert agreement_preview.json()["document"]["terms"]["principal_idr"] == "7000000.00"
+    assert agreement_preview.json()["document"]["borrower"]["name"] == "Nasabah Uji"
+    declined = await client.post(
+        f"/borrower/v1/applications/{application_id}/accept-offer",
+        headers={"X-Borrower-CSRF": client.cookies.get("pg_borrower_csrf") or ""},
+        json={"preview_sha256": agreement_preview.json()["preview_sha256"], "consent": False},
+    )
+    assert declined.status_code == 422
+    stale = await client.post(
+        f"/borrower/v1/applications/{application_id}/accept-offer",
+        headers={"X-Borrower-CSRF": client.cookies.get("pg_borrower_csrf") or ""},
+        json={"preview_sha256": "0" * 64, "consent": True},
+    )
+    assert stale.status_code == 409
     accepted = await client.post(
         f"/borrower/v1/applications/{application_id}/accept-offer",
         headers={"X-Borrower-CSRF": client.cookies.get("pg_borrower_csrf") or ""},
+        json={"preview_sha256": agreement_preview.json()["preview_sha256"], "consent": True},
     )
     assert accepted.status_code == 200, accepted.text
+    agreement_record = await client.get(f"/borrower/v1/applications/{application_id}/agreement")
+    assert agreement_record.status_code == 200, agreement_record.text
+    assert agreement_record.json()["document"]["terms"]["principal_idr"] == "7000000.00"
+    assert agreement_record.json()["consent"]["document_preview_sha256"] == agreement_preview.json()["preview_sha256"]
+    assert agreement_record.json()["document_digest"].startswith("0x")
+    agreement_verification = await client.get(f"/borrower/v1/applications/{application_id}/agreement/verify")
+    assert agreement_verification.status_code == 200
+    assert agreement_verification.json()["local_integrity"] is True
     pickup = await client.post(
         "/v1/pickups",
         json={"application_id": application_id, "pickup_address": "Jl. Nasabah No. 1"},

@@ -373,9 +373,7 @@ async def create_offer(data: OfferCreate, session: SessionDep, org_id: OrgIdDep,
 async def accept_offer(
     offer_id: UUID, data: AcceptanceCreate, session: SessionDep, org_id: OrgIdDep, user: UserDep
 ) -> ActionResult:
-    item = await mvp_service.accept_offer(session, org_id, user.id, offer_id, data.channel, data.ip_address)
-    await session.commit()
-    return ActionResult(id=item.id, application_id=item.application_id, status=item.status, message="Offer accepted")
+    raise HTTPException(status.HTTP_409_CONFLICT, "Penawaran harus ditinjau dan disetujui langsung oleh borrower melalui portal")
 
 
 @router.post("/pickups", response_model=ActionResult, status_code=status.HTTP_201_CREATED, dependencies=[write_access])

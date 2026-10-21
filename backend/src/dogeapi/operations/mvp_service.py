@@ -883,6 +883,7 @@ async def accept_offer(
         offer.status = "expired"
         raise _conflict("Offer has expired")
     offer.status = "accepted"
+    accepted_at = datetime.now(UTC)
     session.add(
         CustomerAcceptance(
             org_id=org_id,
@@ -890,6 +891,7 @@ async def accept_offer(
             borrower_id=application.borrower_id,
             channel=channel,
             ip_address=ip_address,
+            accepted_at=accepted_at,
         )
     )
     account = LoanAccount(
@@ -909,9 +911,11 @@ async def accept_offer(
         org_id=org_id,
         application_id=application.id,
         offer_id=offer.id,
-        sbg_number=f"SBG-{datetime.now(UTC).strftime('%y%m%d')}-{secrets.token_hex(3).upper()}",
+        sbg_number=f"SBG-{application.id.hex[:16].upper()}-{offer.version}",
         agreement_type=product.agreement_type if product else "pawn",
         document_version=offer.agreement_version,
+        status="accepted" if borrower_id else "staff_recorded",
+        signed_at=accepted_at,
     )
     session.add_all([account, agreement])
     if borrower_id is None:
@@ -945,6 +949,11 @@ async def create_pickup(session: AsyncSession, org_id: UUID, actor_id: UUID, dat
     )
     if application.status != "accepted":
         raise _conflict("Application must have an accepted offer")
+    agreement = await session.scalar(select(PawnAgreement).where(
+        PawnAgreement.org_id == org_id, PawnAgreement.application_id == application.id,
+    ))
+    if agreement is None or agreement.status != "accepted" or not agreement.consent_snapshot:
+        raise _conflict("Borrower agreement consent must be recorded before pickup")
     existing = await session.scalar(
         select(PickupTask).where(PickupTask.org_id == org_id, PickupTask.application_id == application.id)
     )
@@ -1246,6 +1255,11 @@ async def disburse_loan(
     )
     if account is None:
         raise _not_found("Loan account")
+    agreement = await session.scalar(select(PawnAgreement).where(
+        PawnAgreement.org_id == org_id, PawnAgreement.application_id == application_id,
+    ))
+    if agreement is None or agreement.status != "accepted" or not agreement.consent_snapshot:
+        raise _conflict("Borrower agreement consent must be recorded before disbursement")
     existing = await session.scalar(
         select(CashTransaction).where(
             CashTransaction.org_id == org_id, CashTransaction.idempotency_key == idempotency_key

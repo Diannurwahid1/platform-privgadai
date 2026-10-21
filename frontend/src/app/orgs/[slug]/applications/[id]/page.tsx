@@ -25,15 +25,18 @@ import {
   disburseLoan,
   downloadEvidence,
   getApplicationDetail,
+  getAgreementEvidence,
   getCollateralTimeline,
   listCustodyLocations,
   transitionApplication,
   transitionPickup,
   uploadEvidence,
+  verifyAgreementEvidence,
   type ApplicationDetail,
   type CollateralTimeline,
   type MasterItem,
 } from "@/lib/operations";
+import type { AgreementRecord, AgreementVerification } from "@/lib/borrower";
 
 const labels: Record<string, string> = {
   draft: "Draf",
@@ -66,6 +69,8 @@ export default function ApplicationDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [agreement, setAgreement] = useState<AgreementRecord | null>(null);
+  const [agreementCheck, setAgreementCheck] = useState<AgreementVerification | null>(null);
   const [incidentType, setIncidentType] = useState("custody_exception");
   const [incidentSeverity, setIncidentSeverity] = useState("medium");
   const [incidentDescription, setIncidentDescription] = useState("");
@@ -79,6 +84,11 @@ export default function ApplicationDetailPage() {
     setDetail(application);
     setTimeline(passport);
     setLocations(custody);
+    if (application.offers.some((offer) => offer.status === "accepted")) {
+      setAgreement(await getAgreementEvidence(id));
+    } else {
+      setAgreement(null);
+    }
   }, [id]);
 
   useEffect(() => {
@@ -97,6 +107,15 @@ export default function ApplicationDetailPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function exportAgreement() {
+    if (!agreement) return;
+    const blob = new Blob([JSON.stringify(agreement, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url; link.download = `${agreement.sbg_number}-bukti-persetujuan.json`; link.click();
+    URL.revokeObjectURL(url);
   }
 
   if (!detail || !timeline) {
@@ -145,6 +164,14 @@ export default function ApplicationDetailPage() {
       </section>
 
       <DecisionWorkspace detail={detail} busy={busy} act={act} />
+
+      {agreement && <section className="rounded-[var(--pg-radius-lg)] border border-border bg-surface p-5 shadow-[var(--pg-shadow-sm)]">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="flex items-center gap-2 font-bold"><FileCheck2 className="h-5 w-5 text-primary" /> Dokumen dan bukti persetujuan</h2><p className="mt-1 text-xs text-muted-foreground">{agreement.sbg_number} · Versi {agreement.document_version} · {agreement.status.replaceAll("_", " ")}</p></div><span className="rounded-full border border-primary/20 bg-surface-blue px-3 py-2 text-xs font-bold text-primary">BNB: {agreement.chain_status.replaceAll("_", " ")}</span></div>
+        <div className="mt-4 grid gap-3 text-xs sm:grid-cols-3"><div className="rounded-xl bg-surface-soft p-3"><p className="text-muted-foreground">Borrower</p><p className="mt-1 font-semibold">{agreement.document?.borrower.name ?? "Dokumen lama"}</p></div><div className="rounded-xl bg-surface-soft p-3"><p className="text-muted-foreground">Nilai dan tenor disetujui</p><p className="mt-1 font-semibold">{agreement.document ? `${idr(agreement.document.terms.principal_idr)} · ${agreement.document.terms.tenor_days} hari` : "Belum ada snapshot"}</p></div><div className="rounded-xl bg-surface-soft p-3"><p className="text-muted-foreground">Persetujuan</p><p className="mt-1 font-semibold">{new Date(agreement.accepted_at).toLocaleString("id-ID")} · {agreement.consent?.channel ?? "legacy"}</p></div></div>
+        <div className="mt-4 flex flex-wrap items-center gap-3"><button type="button" disabled={busy} onClick={() => void act("Bukti perjanjian diverifikasi.", async () => { setAgreementCheck(await verifyAgreementEvidence(id)); })} className="rounded-xl border border-primary/25 bg-surface-blue px-4 py-2 text-xs font-bold text-primary disabled:opacity-50">Verifikasi digest</button><button type="button" onClick={exportAgreement} className="rounded-xl border border-border px-4 py-2 text-xs font-bold">Unduh paket bukti JSON</button>{agreement.explorer_url && <a href={agreement.explorer_url} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-primary underline">Transaksi BNB ↗</a>}</div>
+        {agreementCheck && <p className={`mt-3 rounded-xl px-4 py-3 text-xs ${agreementCheck.local_integrity && agreementCheck.chain_match ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-900"}`}>{agreementCheck.local_integrity ? "Arsip lokal cocok" : "Arsip lokal tidak cocok"} · {agreementCheck.chain_match ? "Digest on-chain cocok" : agreementCheck.detail ?? "Belum cocok di chain"}</p>}
+        <p className="mt-3 text-[11px] text-muted-foreground">Bukti chain adalah pencatatan platform. Status ini bukan tanda tangan elektronik tersertifikasi borrower.</p>
+      </section>}
 
       <section className={`flex flex-col gap-4 rounded-[var(--pg-radius-lg)] border p-5 shadow-[var(--pg-shadow-sm)] sm:flex-row sm:items-center sm:justify-between ${kycVerified ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
         <div className="flex items-start gap-3"><span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${kycVerified ? "bg-emerald-600 text-white" : "bg-amber-100 text-amber-800"}`}><IdCard className="h-5 w-5" /></span><div><h2 className="text-sm font-bold">Gate KYC debitur: {kycVerified ? "Terverifikasi" : labels[kycStatus] ?? kycStatus.replaceAll("_", " ")}</h2><p className="mt-1 text-xs leading-5 text-muted-foreground">{kycVerified ? "Identitas masih berlaku dan pengajuan dapat diteruskan ke penaksiran." : "Pengajuan tidak dapat masuk penaksiran sebelum KTP, OCR, dan keputusan checker selesai."}</p></div></div>

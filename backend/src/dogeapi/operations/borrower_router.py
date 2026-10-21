@@ -22,6 +22,7 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
+from dogeapi.agreement import service as agreement_service
 from dogeapi.auth.passwords import hash_password, verify_password
 from dogeapi.deps import SessionDep
 from dogeapi.file_security import scan_upload
@@ -36,6 +37,7 @@ from dogeapi.models import (
     Branch,
     CollateralEvent,
     Consent,
+    CustomerAcceptance,
     DebtorProfile,
     EvidenceEvent,
     EvidenceFile,
@@ -45,6 +47,7 @@ from dogeapi.models import (
     LoanProduct,
     Offer,
     Organization,
+    PawnAgreement,
 )
 from dogeapi.operations import ai_appraisal, kyc_provider, kyc_service, mvp_service
 from dogeapi.operations.kyc_schemas import KycCreate
@@ -78,6 +81,11 @@ class SubmitInput(BaseModel):
     requested_tenor_days: int = Field(gt=0)
     purpose: str | None = Field(default=None, max_length=1000)
     consent_document_version: str = Field(min_length=1, max_length=32)
+
+
+class AcceptOfferInput(BaseModel):
+    preview_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    consent: bool
 
 
 @dataclass(frozen=True)
@@ -542,15 +550,80 @@ async def application_photo(application_id: UUID, principal: Annotated[Principal
     return FileResponse(path, media_type=item.photo_content_type, headers={"Cache-Control": "private, no-store"})
 
 
+@router.get("/applications/{application_id}/agreement-preview")
+async def agreement_preview(application_id: UUID, principal: Annotated[Principal, Depends(_principal)],
+                            session: SessionDep) -> dict[str, object]:
+    app = await _owned_application(session, principal, application_id)
+    offer = await session.scalar(select(Offer).where(
+        Offer.org_id == principal.org.id, Offer.application_id == app.id, Offer.status == "offered",
+    ).order_by(Offer.version.desc()))
+    if offer is None or offer.expires_at <= datetime.now(UTC):
+        raise HTTPException(status.HTTP_409_CONFLICT, "Tidak ada penawaran aktif")
+    try:
+        snapshot = await agreement_service.document_snapshot(session, principal.org, principal.borrower, app, offer)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    return {"document": snapshot, "preview_sha256": agreement_service.preview_digest(snapshot)}
+
+
+@router.get("/applications/{application_id}/agreement")
+async def agreement_record(application_id: UUID, principal: Annotated[Principal, Depends(_principal)],
+                           session: SessionDep) -> dict[str, object]:
+    await _owned_application(session, principal, application_id)
+    agreement = await session.scalar(select(PawnAgreement).where(
+        PawnAgreement.org_id == principal.org.id, PawnAgreement.application_id == application_id,
+    ))
+    if agreement is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Perjanjian belum tersedia")
+    return agreement_service.public_record(agreement, include_snapshot=True)
+
+
+@router.get("/applications/{application_id}/agreement/verify")
+async def verify_agreement(application_id: UUID, principal: Annotated[Principal, Depends(_principal)],
+                           session: SessionDep) -> dict[str, object]:
+    await _owned_application(session, principal, application_id)
+    agreement = await session.scalar(select(PawnAgreement).where(
+        PawnAgreement.org_id == principal.org.id, PawnAgreement.application_id == application_id,
+    ))
+    if agreement is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Perjanjian belum tersedia")
+    return {**agreement_service.public_record(agreement), **await agreement_service.verify(agreement)}
+
+
 @router.post("/applications/{application_id}/accept-offer")
-async def accept_offer(application_id: UUID, request: Request,
+async def accept_offer(application_id: UUID, data: AcceptOfferInput, request: Request,
                        principal: Annotated[Principal, Depends(_csrf)], session: SessionDep) -> dict[str, str]:
+    if not data.consent:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Persetujuan dokumen wajib diberikan")
+    if _borrower_kyc_status(await _latest_kyc(session, principal))["status"] != "verified":
+        raise HTTPException(status.HTTP_409_CONFLICT, "KYC harus terverifikasi sebelum menerima penawaran")
     app = await _owned_application(session, principal, application_id)
     offer = await session.scalar(select(Offer).where(Offer.org_id == principal.org.id,
         Offer.application_id == app.id, Offer.status == "offered").order_by(Offer.version.desc()))
     if offer is None:
         raise HTTPException(status.HTTP_409_CONFLICT, "Belum ada penawaran aktif")
+    try:
+        snapshot = await agreement_service.document_snapshot(session, principal.org, principal.borrower, app, offer)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    if not secrets.compare_digest(data.preview_sha256, agreement_service.preview_digest(snapshot)):
+        raise HTTPException(status.HTTP_409_CONFLICT, "Isi penawaran berubah. Buka dan tinjau lagi dokumennya")
     await mvp_service.accept_offer(session, principal.org.id, None, offer.id, "web",
         request.client.host if request.client else None, borrower_id=principal.borrower.id)
+    current_snapshot = await agreement_service.document_snapshot(session, principal.org, principal.borrower, app, offer)
+    if not secrets.compare_digest(data.preview_sha256, agreement_service.preview_digest(current_snapshot)):
+        raise HTTPException(status.HTTP_409_CONFLICT, "Isi penawaran berubah saat persetujuan. Ulangi tinjauan")
+    agreement = await session.scalar(select(PawnAgreement).where(
+        PawnAgreement.org_id == principal.org.id, PawnAgreement.application_id == app.id,
+    ))
+    acceptance = await session.scalar(select(CustomerAcceptance).where(
+        CustomerAcceptance.org_id == principal.org.id, CustomerAcceptance.offer_id == offer.id,
+    ))
+    if agreement is None or acceptance is None:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Bukti persetujuan gagal dibuat")
+    await agreement_service.capture_acceptance(
+        session, agreement, acceptance, current_snapshot,
+        session_id=principal.login_session.id, user_agent=request.headers.get("user-agent"),
+    )
     await session.commit()
     return {"status": "accepted", "message": "Penawaran diterima"}

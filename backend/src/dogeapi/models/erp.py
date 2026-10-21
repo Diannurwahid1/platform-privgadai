@@ -15,6 +15,7 @@ from sqlalchemy import (
     ForeignKey,
     ForeignKeyConstraint,
     Index,
+    Integer,
     Numeric,
     String,
     Text,
@@ -81,8 +82,21 @@ class PawnAgreement(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     sbg_number: Mapped[str] = mapped_column(String(50), nullable=False)
     agreement_type: Mapped[str] = mapped_column(String(24), nullable=False, default="pawn", server_default="pawn")
     document_version: Mapped[str] = mapped_column(String(32), nullable=False)
-    status: Mapped[str] = mapped_column(String(24), nullable=False, default="signed", server_default="signed")
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="accepted", server_default="accepted")
     signed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    document_snapshot: Mapped[dict[str, object] | None] = mapped_column(JSON(), nullable=True)
+    consent_snapshot: Mapped[dict[str, object] | None] = mapped_column(JSON(), nullable=True)
+    document_salt: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    document_digest: Mapped[str | None] = mapped_column(String(66), nullable=True)
+    consent_digest: Mapped[str | None] = mapped_column(String(66), nullable=True)
+    opaque_chain_id: Mapped[str | None] = mapped_column(String(66), nullable=True, unique=True)
+    chain_status: Mapped[str] = mapped_column(String(24), nullable=False, default="not_recorded", server_default="not_recorded")
+    chain_contract_address: Mapped[str | None] = mapped_column(String(42), nullable=True)
+    chain_tx_hash: Mapped[str | None] = mapped_column(String(66), nullable=True)
+    chain_block_number: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+    chain_attempts: Mapped[int] = mapped_column(Integer(), nullable=False, default=0, server_default="0")
+    chain_last_error: Mapped[str | None] = mapped_column(String(240), nullable=True)
+    chain_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class LoanLedgerEntry(UUIDPrimaryKeyMixin, Base):
